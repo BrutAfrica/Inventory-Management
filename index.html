@@ -415,6 +415,9 @@
             <div class="field"><label>EmailJS Service ID</label><input id="setServiceId" type="text" placeholder="service_xxxxxxx"></div>
             <div class="field"><label>EmailJS Template ID</label><input id="setTemplateId" type="text" placeholder="template_xxxxxxx"></div>
             <div class="field"><label>EmailJS Public Key</label><input id="setPublicKey" type="text" placeholder="xxxxxxxxxxxxxxxx"></div>
+            <div class="field"><label>EmailJS Private Key <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><input id="setPrivateKey" type="text" placeholder="Only needed if 'Use Private Key' is on in EmailJS">
+              <div class="hint">If EmailJS wants you to pay to add a domain, you don't need to: instead go to EmailJS → Account → Security, turn <strong>on</strong> "Use Private Key", copy the Private Key from Account → General, and paste it here. This works free and skips the domain check entirely.</div>
+            </div>
             <div class="field">
               <label>Status</label>
               <div style="font-size:13px;padding:9px 0;"><span class="status-dot off" id="emailStatusDot"></span><span id="emailStatusText">Not configured</span></div>
@@ -574,7 +577,7 @@ async function reloadFromCloud(){
   const loadedState = await loadJSON(STATE_KEY, true, null);
   if(loadedState){
     state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}}, loadedState);
-    state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', notifyEmail:''}, state.settings||{});
+    state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:''}, state.settings||{});
   }
   invoicesIndex = await loadJSON(INVOICE_INDEX_KEY, true, []);
   document.getElementById('bizName').textContent = state.businessName || 'Brut Africa';
@@ -611,7 +614,7 @@ let state = {
   businessName: 'Brut Africa',
   wines: [],
   movements: [],
-  settings: {emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', notifyEmail:''}
+  settings: {emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:''}
 };
 let invoicesIndex = [];
 
@@ -1027,6 +1030,7 @@ async function sendBatchAlertEmail(movements, sharedNote){
       business_name: state.businessName || 'Brut Africa'
     }
   };
+  if(s.emailjsPrivateKey) payload.accessToken = s.emailjsPrivateKey;
   try{
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method:'POST',
@@ -1060,6 +1064,7 @@ async function sendAlertEmail(movement, wine){
       business_name: state.businessName || 'Brut Africa'
     }
   };
+  if(s.emailjsPrivateKey) payload.accessToken = s.emailjsPrivateKey;
   try{
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method:'POST',
@@ -1079,6 +1084,7 @@ function renderSettings(){
   document.getElementById('setServiceId').value = state.settings.emailjsServiceId || '';
   document.getElementById('setTemplateId').value = state.settings.emailjsTemplateId || '';
   document.getElementById('setPublicKey').value = state.settings.emailjsPublicKey || '';
+  document.getElementById('setPrivateKey').value = state.settings.emailjsPrivateKey || '';
   const configured = state.settings.emailjsServiceId && state.settings.emailjsTemplateId && state.settings.emailjsPublicKey;
   document.getElementById('emailStatusDot').className = 'status-dot ' + (configured?'on':'off');
   document.getElementById('emailStatusText').textContent = configured ? 'Configured — alerts send automatically' : 'Not configured';
@@ -1089,6 +1095,7 @@ document.getElementById('btnSaveSettings').addEventListener('click', async ()=>{
   state.settings.emailjsServiceId = document.getElementById('setServiceId').value.trim();
   state.settings.emailjsTemplateId = document.getElementById('setTemplateId').value.trim();
   state.settings.emailjsPublicKey = document.getElementById('setPublicKey').value.trim();
+  state.settings.emailjsPrivateKey = document.getElementById('setPrivateKey').value.trim();
   document.getElementById('bizName').textContent = state.businessName;
   await saveJSON(STATE_KEY, state, true);
   renderSettings();
