@@ -271,6 +271,9 @@
   <div id="cloudBanner" style="display:none;background:var(--amber-soft);color:#5F4A17;border:1px solid #E4C079;border-radius:8px;padding:10px 16px;margin-top:16px;font-size:12.5px;">
     ⚠️ Not connected to shared storage yet — your team won't see each other's changes, and nothing you enter will be saved after you close this page. <a href="#" data-goto="settings" style="color:var(--wine);font-weight:600;">Set it up in Settings →</a>
   </div>
+  <div id="globalExportBanner" style="display:none;background:var(--gold-soft);border:1px solid var(--gold);color:var(--wine-dark);border-radius:8px;padding:10px 16px;margin-top:16px;font-size:12.5px;">
+    📊 Last month's Zoho export is ready. <a href="#" data-goto="export" style="color:var(--wine);font-weight:600;">Download it →</a>
+  </div>
 
   <nav class="tabs" id="tabs">
     <button data-tab="dashboard" class="active">Dashboard</button>
@@ -308,7 +311,7 @@
       <div class="panel">
         <div class="panel-body">
           <div class="table-scroll"><table>
-            <thead><tr><th>Wine</th><th>Bonded</th><th>Karen</th><th>Westlands</th><th>Total</th><th></th></tr></thead>
+            <thead><tr><th>Wine</th><th>SKU</th><th>Bonded</th><th>Karen</th><th>Westlands</th><th>Total</th><th></th></tr></thead>
             <tbody id="winesBody"></tbody>
           </table></div>
         </div>
@@ -383,13 +386,14 @@
       <div class="section-head">
         <div><h2>Monthly export</h2><p>Zoho-ready workbook: movement ledger + stock adjustment summary</p></div>
       </div>
+      <div id="exportPendingBanner" style="display:none;background:var(--gold-soft);border:1px solid var(--gold);color:var(--wine-dark);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"></div>
       <div class="panel">
         <div class="panel-body">
           <div class="field" style="max-width:260px;">
             <label>Month</label>
             <input type="month" id="exportMonth">
           </div>
-          <p style="color:var(--ink-soft);font-size:12.5px;margin:8px 0 16px;">Generates an .xlsx with two sheets — a full movement ledger for the month, and a per-wine/per-location summary (opening, in, out, closing) ready to paste into Zoho Books stock adjustments.</p>
+          <p style="color:var(--ink-soft);font-size:12.5px;margin:8px 0 16px;">Generates an .xlsx with up to three sheets: a <strong>Zoho Import</strong> sheet (matches Zoho's exact Inventory Adjustment columns — tastings only, since sales already hit Zoho via your Sales Invoices and transfers between your own locations don't change Zoho's total), a full <strong>Movement Ledger</strong> for your records, and an <strong>Internal Location Detail</strong> sheet for your own 3-location reconciliation.</p>
           <button class="btn" id="btnExport">⬇ Download Excel</button>
         </div>
       </div>
@@ -475,11 +479,14 @@
         <div class="field"><label>Wine name</label><input id="wineName" placeholder="e.g. Château Vellas Rouge"></div>
         <div class="field"><label>Vintage</label><input id="wineVintage" placeholder="e.g. 2021"></div>
       </div>
-      <div class="field"><label>Producer</label><input id="wineProducer" list="producerList" placeholder="e.g. Domaine des Loges">
-          <datalist id="producerList">
-            <option value="Vellas"><option value="Domaine des Loges"><option value="Paul Benoît">
-            <option value="Mauperier"><option value="Chemin de la Pinède"><option value="La Marca">
-          </datalist>
+      <div class="field-row">
+        <div class="field"><label>Producer</label><input id="wineProducer" list="producerList" placeholder="e.g. Domaine des Loges">
+            <datalist id="producerList">
+              <option value="Vellas"><option value="Domaine des Loges"><option value="Paul Benoît">
+              <option value="Mauperier"><option value="Chemin de la Pinède"><option value="La Marca">
+            </datalist>
+        </div>
+        <div class="field"><label>SKU</label><input id="wineSku" placeholder="e.g. VEL-RG-21"></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Bonded Warehousing qty</label><input id="wineBonded" type="number" min="0" value="0"></div>
@@ -657,12 +664,13 @@ async function connectFirebase(cfg, silent){
 async function reloadFromCloud(){
   const loadedState = await loadJSON(STATE_KEY, true, null);
   if(loadedState){
-    state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}}, loadedState);
+    state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}, pendingExportMonth:'', lastAutoNotifiedMonth:''}, loadedState);
     state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:''}, state.settings||{});
   }
   invoicesIndex = await loadJSON(INVOICE_INDEX_KEY, true, []);
   document.getElementById('bizName').textContent = state.businessName || 'Brut Africa';
   renderAll();
+  checkMonthlyExportRollover();
 }
 document.getElementById('btnConnectFirebase').addEventListener('click', async ()=>{
   const raw = document.getElementById('firebaseConfigInput').value.trim();
@@ -790,12 +798,13 @@ function openLocationModal(locKey){
 function renderWines(){
   const body = document.getElementById('winesBody');
   if(!state.wines.length){
-    body.innerHTML = `<tr class="empty-row"><td colspan="7">No wines added yet — click "Add wine" to build your list.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">No wines added yet — click "Add wine" to build your list.</td></tr>`;
     return;
   }
   body.innerHTML = state.wines.map(w=>`
     <tr>
       <td><div class="wine-name">${esc(w.name)}${w.vintage?` <span class="wine-sub">'${esc(w.vintage)}</span>`:''}</div><div class="wine-sub">${esc(w.producer||'')}</div></td>
+      <td class="mono" style="font-size:11px;color:var(--ink-soft);white-space:nowrap;">${esc(w.sku||'—')}</td>
       <td>${w.stock.bonded}</td>
       <td>${w.stock.karen}</td>
       <td>${w.stock.westlands}</td>
@@ -887,6 +896,7 @@ function openWineModal(id){
   document.getElementById('wineName').value = w ? w.name : '';
   document.getElementById('wineVintage').value = w ? (w.vintage||'') : '';
   document.getElementById('wineProducer').value = w ? (w.producer||'') : '';
+  document.getElementById('wineSku').value = w ? (w.sku||'') : '';
   document.getElementById('wineBonded').value = w ? w.stock.bonded : 0;
   document.getElementById('wineKaren').value = w ? w.stock.karen : 0;
   document.getElementById('wineWestlands').value = w ? w.stock.westlands : 0;
@@ -914,6 +924,7 @@ document.getElementById('btnSaveWine').addEventListener('click', async ()=>{
     name,
     vintage: document.getElementById('wineVintage').value.trim(),
     producer: document.getElementById('wineProducer').value.trim(),
+    sku: document.getElementById('wineSku').value.trim(),
     notes: document.getElementById('wineNotes').value.trim(),
     stock: {
       bonded: Math.max(0, parseInt(document.getElementById('wineBonded').value||0)),
@@ -1376,8 +1387,9 @@ document.getElementById('btnTestEmail').addEventListener('click', async ()=>{
 
 /* ---------- Export ---------- */
 document.getElementById('exportMonth').value = new Date().toISOString().slice(0,7);
-document.getElementById('btnExport').addEventListener('click', ()=>{
-  const month = document.getElementById('exportMonth').value; // YYYY-MM
+document.getElementById('btnExport').addEventListener('click', ()=> generateAndDownloadExport(document.getElementById('exportMonth').value));
+
+async function generateAndDownloadExport(month){
   if(!month){ toast('Pick a month first', 'error'); return; }
   const rows = state.movements.filter(m => m.date.startsWith(month));
   if(!rows.length){ toast('No movements logged for that month', 'error'); return; }
@@ -1396,11 +1408,11 @@ document.getElementById('btnExport').addEventListener('click', ()=>{
       'Invoice #': inv ? (inv.number||'') : '',
       Customer: inv ? (inv.customer||'') : '',
       Note: m.note || '',
-      'Email Alert': m.type==='move' ? 'n/a' : (m.emailStatus||'')
+      'Email Alert': m.emailStatus || ''
     };
   });
 
-  // Summary per SKU per location: net change this month, closing = current stock, opening = closing - net
+  // Internal location summary (for your own reconciliation — Zoho only tracks one combined location)
   const summaryMap = {};
   state.wines.forEach(w=>{
     LOCATIONS.forEach(l=>{
@@ -1431,12 +1443,115 @@ document.getElementById('btnExport').addEventListener('click', ()=>{
       };
     });
 
+  // Zoho Inventory Adjustments import — tastings only (sales are already in Zoho via Sales Invoice;
+  // transfers between your own locations don't change Zoho's single combined total)
+  const tastingByWine = {};
+  rows.filter(m=>m.type==='tasting').forEach(m=>{
+    if(!tastingByWine[m.wineId]) tastingByWine[m.wineId] = 0;
+    tastingByWine[m.wineId] += m.qty;
+  });
+  const monthLabel = new Date(month+'-01T00:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const lastDayOfMonth = new Date(new Date(month+'-01T00:00:00').getFullYear(), new Date(month+'-01T00:00:00').getMonth()+1, 0).toISOString().slice(0,10);
+  const zohoImport = Object.keys(tastingByWine).map(wineId=>{
+    const w = wineById(wineId) || {};
+    return {
+      'InventoryAdjustment#': '',
+      'Date': lastDayOfMonth,
+      'Reference#': `TASTING-${month}`,
+      'Status': '',
+      'InventoryAdjustment ID': '',
+      'Adjustment Type': 'Quantity',
+      'Reason': 'Tasting/Marketing Expense',
+      'Description': `Wine used in tastings — ${monthLabel}`,
+      'Item Name': w.name || '',
+      'Item ID': '',
+      'SKU': w.sku || '',
+      'Account': '',
+      'Inventory Account': '',
+      'Item Desc': '',
+      'Quantity Adjusted': -tastingByWine[wineId],
+      'Cost Price': '',
+      'Value Adjusted': '',
+      'Usage unit': 'bottle',
+      'Project ID': '',
+      'Project Name': '',
+      'Location ID': '',
+      'Location Name': ''
+    };
+  });
+
   const wb = XLSX.utils.book_new();
+  if(zohoImport.length){
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(zohoImport), 'Zoho Import - Tastings');
+  }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ledger), 'Movement Ledger');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Zoho Stock Summary');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Internal Location Detail');
   XLSX.writeFile(wb, `Brut-Africa-Inventory-${month}.xlsx`);
-  toast('Excel file downloaded', 'success');
-});
+  toast(zohoImport.length ? 'Excel downloaded — see the "Zoho Import" tab' : 'Excel downloaded (no tastings this month, so nothing to import into Zoho)', 'success');
+
+  if(state.pendingExportMonth === month){
+    state.pendingExportMonth = '';
+    await saveJSON(STATE_KEY, state, true);
+    updateExportBanners();
+  }
+}
+
+/* ---------- Automatic monthly export detection ---------- */
+function updateExportBanners(){
+  const pending = state.pendingExportMonth;
+  const exportBanner = document.getElementById('exportPendingBanner');
+  const globalBanner = document.getElementById('globalExportBanner');
+  if(pending){
+    exportBanner.style.display = 'flex';
+    exportBanner.innerHTML = `<span>📊 Your <strong>${pending}</strong> export is ready to download.</span><button class="btn small" id="btnGoPendingExport" type="button">Download now</button>`;
+    document.getElementById('btnGoPendingExport').addEventListener('click', ()=>{
+      document.getElementById('exportMonth').value = pending;
+      generateAndDownloadExport(pending);
+    });
+    globalBanner.style.display = 'block';
+  } else {
+    exportBanner.style.display = 'none';
+    globalBanner.style.display = 'none';
+  }
+}
+async function sendExportReadyEmail(month){
+  const s = state.settings;
+  if(!s.emailjsServiceId || !s.emailjsTemplateId || !s.emailjsPublicKey) return;
+  const payload = {
+    service_id: s.emailjsServiceId,
+    template_id: s.emailjsTemplateId,
+    user_id: s.emailjsPublicKey,
+    template_params: {
+      to_email: s.notifyEmail || '',
+      wine_name: `Your ${month} Zoho export is ready`,
+      event_type: 'Monthly export ready',
+      quantity: '',
+      location: '',
+      date: month,
+      note: 'Open the Cellar Ledger app → Monthly Export tab and tap "Download now" to get this month\'s Zoho-ready file.',
+      business_name: state.businessName || 'Brut Africa'
+    }
+  };
+  if(s.emailjsPrivateKey) payload.accessToken = s.emailjsPrivateKey;
+  try{ await fetch('https://api.emailjs.com/api/v1.0/email/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); }catch(e){}
+}
+async function checkMonthlyExportRollover(){
+  if(!db) return; // only meaningful with shared storage, so it fires once for the whole team
+  const now = new Date();
+  const prevDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const prevMonth = prevDate.toISOString().slice(0,7);
+  if(state.lastAutoNotifiedMonth === prevMonth) return;
+  const hasData = state.movements.some(m=>m.date.startsWith(prevMonth));
+  state.lastAutoNotifiedMonth = prevMonth;
+  if(hasData){
+    state.pendingExportMonth = prevMonth;
+    await saveJSON(STATE_KEY, state, true);
+    updateExportBanners();
+    sendExportReadyEmail(prevMonth);
+  } else {
+    await saveJSON(STATE_KEY, state, true);
+  }
+}
 
 /* ---------- Utils ---------- */
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1496,6 +1611,7 @@ function renderAll(){
   renderInvoices();
   renderDepleted();
   renderSettings();
+  updateExportBanners();
 }
 
 /* ---------- Init ---------- */
