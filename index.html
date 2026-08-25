@@ -114,7 +114,10 @@
   .bin{
     background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:20px 20px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden;
+    cursor:pointer;transition:transform .15s ease, box-shadow .15s ease;
   }
+  .bin:hover{transform:translateY(-2px);box-shadow:0 4px 10px -2px rgba(22,27,31,0.12), 0 14px 28px -14px rgba(22,27,31,0.22);}
+  .bin:focus-visible{outline:2px solid var(--wine);outline-offset:2px;}
   .bin .loc-label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);font-weight:600;}
   .bin .loc-name{font-family:'Fraunces',serif;font-size:19px;margin:3px 0 14px;}
   .gauge{height:10px;border-radius:6px;background:var(--line-soft);overflow:hidden;margin-bottom:10px;}
@@ -272,13 +275,13 @@
     <!-- WINES -->
     <section id="tab-wines">
       <div class="section-head">
-        <div><h2>Wine list</h2><p>Every SKU and its stock per location</p></div>
+        <div><h2>Wine list</h2><p>Every wine and its stock per location</p></div>
         <button class="btn" id="btnAddWine">+ Add wine</button>
       </div>
       <div class="panel">
         <div class="panel-body">
           <table>
-            <thead><tr><th>Wine</th><th>SKU</th><th>Bonded</th><th>Karen</th><th>Westlands</th><th>Total</th><th></th></tr></thead>
+            <thead><tr><th>Wine</th><th>Bonded</th><th>Karen</th><th>Westlands</th><th>Total</th><th></th></tr></thead>
             <tbody id="winesBody"></tbody>
           </table>
         </div>
@@ -325,7 +328,7 @@
         <div class="panel-head"><h3>By wine</h3></div>
         <div class="panel-body">
           <table>
-            <thead><tr><th>Wine</th><th>SKU</th><th>Sold</th><th>Tasting</th><th>Total gone</th></tr></thead>
+            <thead><tr><th>Wine</th><th>Sold</th><th>Tasting</th><th>Total gone</th></tr></thead>
             <tbody id="depletedSummaryBody"></tbody>
           </table>
         </div>
@@ -359,7 +362,7 @@
             <label>Month</label>
             <input type="month" id="exportMonth">
           </div>
-          <p style="color:var(--ink-soft);font-size:12.5px;margin:8px 0 16px;">Generates an .xlsx with two sheets — a full movement ledger for the month, and a per-SKU/per-location summary (opening, in, out, closing) ready to paste into Zoho Books stock adjustments.</p>
+          <p style="color:var(--ink-soft);font-size:12.5px;margin:8px 0 16px;">Generates an .xlsx with two sheets — a full movement ledger for the month, and a per-wine/per-location summary (opening, in, out, closing) ready to paste into Zoho Books stock adjustments.</p>
           <button class="btn" id="btnExport">⬇ Download Excel</button>
         </div>
       </div>
@@ -445,14 +448,11 @@
         <div class="field"><label>Wine name</label><input id="wineName" placeholder="e.g. Château Vellas Rouge"></div>
         <div class="field"><label>Vintage</label><input id="wineVintage" placeholder="e.g. 2021"></div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>Producer</label><input id="wineProducer" list="producerList" placeholder="e.g. Domaine des Loges">
+      <div class="field"><label>Producer</label><input id="wineProducer" list="producerList" placeholder="e.g. Domaine des Loges">
           <datalist id="producerList">
             <option value="Vellas"><option value="Domaine des Loges"><option value="Paul Benoît">
             <option value="Mauperier"><option value="Chemin de la Pinède"><option value="La Marca">
           </datalist>
-        </div>
-        <div class="field"><label>SKU</label><input id="wineSku" placeholder="e.g. VEL-RG-21"></div>
       </div>
       <div class="field-row">
         <div class="field"><label>Bonded Warehousing qty</label><input id="wineBonded" type="number" min="0" value="0"></div>
@@ -513,6 +513,20 @@
       <button class="btn secondary" data-close="moveModalBackdrop">Cancel</button>
       <button class="btn" id="btnSaveMove">Log movement</button>
     </div>
+  </div>
+</div>
+
+<!-- Location Detail Modal -->
+<div class="modal-backdrop" id="locationModalBackdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="locationModalTitle">Location</h3>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;" id="locationModalSubtitle"></div>
+      </div>
+      <button class="modal-close" data-close="locationModalBackdrop">&times;</button>
+    </div>
+    <div class="modal-body" id="locationModalBody"></div>
   </div>
 </div>
 
@@ -653,21 +667,56 @@ function renderDashboard(){
     const total = state.wines.reduce((s,w)=>s+w.stock[l.key],0);
     const skuCount = state.wines.filter(w=>w.stock[l.key]>0).length;
     const pct = Math.round((total/maxTotal)*100);
-    return `<div class="bin">
-      <div class="loc-label">Location</div>
+    return `<div class="bin" data-loc="${l.key}" role="button" tabindex="0">
+      <div class="loc-label">Location · tap for details</div>
       <div class="loc-name">${l.label}</div>
       <div class="gauge"><div class="gauge-fill" style="width:${pct}%"></div></div>
       <div class="bin-stats">
         <div class="count">${total}<small>bottles</small></div>
-        <div class="skus">${skuCount} SKU${skuCount===1?'':'s'} on hand</div>
+        <div class="skus">${skuCount} wine${skuCount===1?'':'s'} on hand</div>
       </div>
     </div>`;
   }).join('');
+  row.querySelectorAll('.bin').forEach(el=>{
+    el.addEventListener('click', ()=> openLocationModal(el.dataset.loc));
+    el.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openLocationModal(el.dataset.loc); } });
+  });
 
   const body = document.getElementById('recentActivityBody');
   const recent = [...state.movements].sort((a,b)=>b.createdAt-a.createdAt).slice(0,6);
   body.innerHTML = recent.length ? recent.map(m=>movementRow(m,true)).join('') :
     `<tr class="empty-row"><td colspan="6">No activity yet — log your first movement to get started.</td></tr>`;
+}
+
+/* ---------- Location detail modal ---------- */
+function openLocationModal(locKey){
+  const loc = LOCATIONS.find(l=>l.key===locKey);
+  if(!loc) return;
+  document.getElementById('locationModalTitle').textContent = loc.label;
+  const winesHere = state.wines.filter(w=>w.stock[locKey] > 0).sort((a,b)=>a.name.localeCompare(b.name));
+  const totalBottles = winesHere.reduce((s,w)=>s+w.stock[locKey],0);
+  document.getElementById('locationModalSubtitle').textContent =
+    winesHere.length ? `${winesHere.length} wine${winesHere.length===1?'':'s'} · ${totalBottles} bottle${totalBottles===1?'':'s'} total` : 'No stock here yet';
+  const body = document.getElementById('locationModalBody');
+  body.innerHTML = winesHere.length ? `
+    <table>
+      <thead><tr><th>Wine</th><th>Bottles</th><th>Cases</th></tr></thead>
+      <tbody>
+        ${winesHere.map(w=>{
+          const qty = w.stock[locKey];
+          const cases = Math.floor(qty / CASE_SIZE);
+          const rem = qty % CASE_SIZE;
+          const casesLabel = qty < CASE_SIZE ? '—' : `${cases} case${cases===1?'':'s'}${rem ? ` + ${rem}` : ''}`;
+          return `<tr>
+            <td><div class="wine-name">${esc(w.name)}</div>${w.producer?`<div class="wine-sub">${esc(w.producer)}</div>`:''}</td>
+            <td>${qty}</td>
+            <td>${casesLabel}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  ` : `<div class="empty-state"><p>Nothing stored here right now.</p></div>`;
+  document.getElementById('locationModalBackdrop').classList.add('open');
 }
 
 /* ---------- Render: Wines ---------- */
@@ -680,7 +729,6 @@ function renderWines(){
   body.innerHTML = state.wines.map(w=>`
     <tr>
       <td><div class="wine-name">${esc(w.name)}${w.vintage?` <span class="wine-sub">'${esc(w.vintage)}</span>`:''}</div><div class="wine-sub">${esc(w.producer||'')}</div></td>
-      <td class="mono">${esc(w.sku||'—')}</td>
       <td>${w.stock.bonded}</td>
       <td>${w.stock.karen}</td>
       <td>${w.stock.westlands}</td>
@@ -765,7 +813,6 @@ function openWineModal(id){
   document.getElementById('wineName').value = w ? w.name : '';
   document.getElementById('wineVintage').value = w ? (w.vintage||'') : '';
   document.getElementById('wineProducer').value = w ? (w.producer||'') : '';
-  document.getElementById('wineSku').value = w ? (w.sku||'') : '';
   document.getElementById('wineBonded').value = w ? w.stock.bonded : 0;
   document.getElementById('wineKaren').value = w ? w.stock.karen : 0;
   document.getElementById('wineWestlands').value = w ? w.stock.westlands : 0;
@@ -793,7 +840,6 @@ document.getElementById('btnSaveWine').addEventListener('click', async ()=>{
     name,
     vintage: document.getElementById('wineVintage').value.trim(),
     producer: document.getElementById('wineProducer').value.trim(),
-    sku: document.getElementById('wineSku').value.trim(),
     notes: document.getElementById('wineNotes').value.trim(),
     stock: {
       bonded: Math.max(0, parseInt(document.getElementById('wineBonded').value||0)),
@@ -891,6 +937,18 @@ function currentMoveType(){ return moveBackdrop.dataset.type || 'move'; }
 document.getElementById('moveFrom').addEventListener('change', refreshAllLineStocks);
 
 document.getElementById('btnSaveMove').addEventListener('click', async ()=>{
+  const saveBtn = document.getElementById('btnSaveMove');
+  saveBtn.disabled = true;
+  const originalLabel = saveBtn.textContent;
+  saveBtn.textContent = 'Saving…';
+  try{
+    await saveMovementInner();
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalLabel;
+  }
+});
+async function saveMovementInner(){
   const type = currentMoveType();
   const date = document.getElementById('moveDate').value || todayStr();
   const note = document.getElementById('moveNote').value.trim();
@@ -938,11 +996,11 @@ document.getElementById('btnSaveMove').addEventListener('click', async ()=>{
       let fileName = '', fileData = '';
       if(fileInput.files && fileInput.files[0]){
         const file = fileInput.files[0];
-        fileName = file.name;
-        fileData = await fileToBase64(file);
         try{
+          fileName = file.name;
+          fileData = await fileToBase64(file);
           await saveJSON('invoice:'+sharedInvoiceId, {id:sharedInvoiceId, fileName, fileData}, true);
-        }catch(e){ toast('Invoice file could not be saved (too large?) — record kept without file', 'error'); fileName=''; fileData=''; }
+        }catch(e){ toast('Invoice file could not be attached — movement will still be logged', 'error'); fileName=''; fileData=''; }
       }
       invoicesIndex.push({id:sharedInvoiceId, number:invNumber, customer:invCustomer, date, fileName, movementIds:[]});
     }
@@ -971,19 +1029,24 @@ document.getElementById('btnSaveMove').addEventListener('click', async ()=>{
 
   if(sharedInvoiceId) await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
   await saveJSON(STATE_KEY, state, true);
+
+  let emailNote = '';
+  if(type!=='move' && newMovements.length){
+    const saveBtn = document.getElementById('btnSaveMove');
+    saveBtn.textContent = 'Sending alert email…';
+    const result = await sendBatchAlertEmail(newMovements, note);
+    newMovements.forEach(m=>m.emailStatus = result.status);
+    await saveJSON(STATE_KEY, state, true);
+    if(result.status==='sent') emailNote = ' · alert sent';
+    else if(result.status==='failed') emailNote = ` · alert FAILED (${result.detail || 'unknown error'})`;
+    else if(result.status==='not_configured') emailNote = ' · alert not configured';
+  }
+
   closeModal('moveModalBackdrop');
   renderAll();
-  toast(`${newMovements.length} movement${newMovements.length===1?'':'s'} logged`, 'success');
-
-  if(type!=='move' && newMovements.length){
-    const result = await sendBatchAlertEmail(newMovements, note);
-    newMovements.forEach(m=>m.emailStatus = result);
-    await saveJSON(STATE_KEY, state, true);
-    renderAll();
-    if(result==='sent') toast('Alert email sent automatically', 'success');
-    else if(result==='failed') toast('Alert email failed to send — check Settings', 'error');
-  }
-});
+  const ok = !emailNote.includes('FAILED');
+  toast(`${newMovements.length} movement${newMovements.length===1?'':'s'} logged${emailNote}`, ok ? 'success' : 'error');
+}
 
 function fileToBase64(file){
   return new Promise((resolve, reject)=>{
@@ -1003,7 +1066,7 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 async function sendBatchAlertEmail(movements, sharedNote){
   const s = state.settings;
   if(!s.emailjsServiceId || !s.emailjsTemplateId || !s.emailjsPublicKey){
-    return 'not_configured';
+    return {status:'not_configured'};
   }
   const first = movements[0];
   const eventLabel = first.type==='remove' ? 'Left storage (sold / removed to customer)' : 'Used in tasting';
@@ -1037,9 +1100,11 @@ async function sendBatchAlertEmail(movements, sharedNote){
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload)
     });
-    return res.ok ? 'sent' : 'failed';
+    if(res.ok) return {status:'sent'};
+    const bodyText = await res.text().catch(()=> '');
+    return {status:'failed', detail: `HTTP ${res.status}${bodyText ? ' — '+bodyText.slice(0,120) : ''}`};
   }catch(e){
-    return 'failed';
+    return {status:'failed', detail: e.message || 'network error'};
   }
 }
 async function sendAlertEmail(movement, wine){
@@ -1125,7 +1190,6 @@ document.getElementById('btnExport').addEventListener('click', ()=>{
       Date: m.date,
       Wine: w.name || '',
       Vintage: w.vintage || '',
-      SKU: w.sku || '',
       Event: m.type==='move' ? 'Transfer' : m.type==='remove' ? 'Sold / removed' : 'Tasting',
       Quantity: m.qty,
       From: m.type==='move' ? locLabel(m.from) : locLabel(m.location),
@@ -1161,7 +1225,7 @@ document.getElementById('btnExport').addEventListener('click', ()=>{
       const net = s.in - s.out;
       const opening = closing - net;
       return {
-        Wine: s.wine.name, Vintage: s.wine.vintage||'', SKU: s.wine.sku||'',
+        Wine: s.wine.name, Vintage: s.wine.vintage||'',
         Location: s.loc.label,
         'Opening Qty': opening, 'In': s.in, 'Out': s.out,
         'Closing Qty': closing
@@ -1200,7 +1264,6 @@ function renderDepleted(){
     const s = summary[id];
     return `<tr>
       <td><div class="wine-name">${w?esc(w.name):'—'}</div>${w&&w.vintage?`<div class="wine-sub">'${esc(w.vintage)}</div>`:''}</td>
-      <td class="mono">${w?esc(w.sku||'—'):'—'}</td>
       <td>${s.sold}</td>
       <td>${s.tasting}</td>
       <td><strong>${s.sold+s.tasting}</strong></td>
