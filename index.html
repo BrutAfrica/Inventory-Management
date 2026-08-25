@@ -225,6 +225,33 @@
   .wine-sub{color:var(--ink-soft);font-size:12px;}
   .filelink{font-size:12.5px;color:var(--wine);text-decoration:underline;cursor:pointer;}
   footer{text-align:center;color:var(--ink-faint);font-size:11.5px;padding:30px 0 10px;}
+
+  /* ---- Mobile ---- */
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -20px;padding:0 20px;}
+  .table-scroll table{min-width:640px;}
+  @media(max-width:600px){
+    #app{padding:0 14px 60px;}
+    .topbar{padding:18px 0 12px;}
+    .brand-text h1{font-size:19px;}
+    nav.tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin:0 -14px;padding-left:14px;padding-right:14px;}
+    nav.tabs::-webkit-scrollbar{display:none;}
+    nav.tabs button{flex-shrink:0;padding:7px 12px;font-size:13px;}
+    .section-head{flex-direction:column;align-items:stretch;gap:10px;}
+    .section-head .btn{width:100%;justify-content:center;}
+    .bin{padding:16px;}
+    .bin-stats .count{font-size:24px;}
+    .panel-head{padding:13px 16px;flex-direction:column;align-items:stretch;gap:8px;}
+    .panel-body{padding:13px 16px 16px;}
+    .modal-body{padding:16px;}
+    .modal-head{padding:15px 16px;}
+    .modal-foot{padding:12px 16px 16px;flex-direction:column-reverse;}
+    .modal-foot .btn{width:100%;justify-content:center;}
+    .radio-cards{grid-template-columns:1fr;}
+    .field-row{grid-template-columns:1fr;}
+    .cellar-row{gap:12px;}
+    #toasts{left:14px;right:14px;bottom:14px;}
+    .toast{max-width:none;}
+  }
 </style>
 </head>
 <body>
@@ -266,8 +293,8 @@
       <div class="panel">
         <div class="panel-head"><h3>Recent activity</h3><button class="btn ghost small" data-goto="movements">View all →</button></div>
         <div class="panel-body" style="padding-top:6px;">
-          <table><thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Location</th><th>Alert</th></tr></thead>
-          <tbody id="recentActivityBody"></tbody></table>
+          <div class="table-scroll"><table><thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Location</th><th>Alert</th></tr></thead>
+          <tbody id="recentActivityBody"></tbody></table></div>
         </div>
       </div>
     </section>
@@ -280,10 +307,10 @@
       </div>
       <div class="panel">
         <div class="panel-body">
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>Wine</th><th>Bonded</th><th>Karen</th><th>Westlands</th><th>Total</th><th></th></tr></thead>
             <tbody id="winesBody"></tbody>
-          </table>
+          </table></div>
         </div>
       </div>
     </section>
@@ -296,10 +323,10 @@
       </div>
       <div class="panel">
         <div class="panel-body">
-          <table>
-            <thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Route</th><th>Invoice</th><th>Email</th></tr></thead>
+          <div class="table-scroll"><table>
+            <thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Route</th><th>Invoice</th><th>Email</th><th>Actions</th></tr></thead>
             <tbody id="movementsBody"></tbody>
-          </table>
+          </table></div>
         </div>
       </div>
     </section>
@@ -311,10 +338,10 @@
       </div>
       <div class="panel">
         <div class="panel-body">
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>Date</th><th>Invoice #</th><th>Customer</th><th>Wine</th><th>Qty</th><th>File</th></tr></thead>
             <tbody id="invoicesBody"></tbody>
-          </table>
+          </table></div>
         </div>
       </div>
     </section>
@@ -327,10 +354,10 @@
       <div class="panel">
         <div class="panel-head"><h3>By wine</h3></div>
         <div class="panel-body">
-          <table>
+          <div class="table-scroll"><table>
             <thead><tr><th>Wine</th><th>Sold</th><th>Tasting</th><th>Total gone</th></tr></thead>
             <tbody id="depletedSummaryBody"></tbody>
-          </table>
+          </table></div>
         </div>
       </div>
       <div class="panel">
@@ -343,10 +370,10 @@
           </div>
         </div>
         <div class="panel-body">
-          <table>
-            <thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Location</th><th>Invoice</th><th>Email</th></tr></thead>
+          <div class="table-scroll"><table>
+            <thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Location</th><th>Invoice</th><th>Email</th><th>Actions</th></tr></thead>
             <tbody id="depletedDetailBody"></tbody>
-          </table>
+          </table></div>
         </div>
       </div>
     </section>
@@ -527,6 +554,46 @@
       <button class="modal-close" data-close="locationModalBackdrop">&times;</button>
     </div>
     <div class="modal-body" id="locationModalBody"></div>
+  </div>
+</div>
+
+<!-- Edit Movement Modal -->
+<div class="modal-backdrop" id="editMoveModalBackdrop">
+  <div class="modal">
+    <div class="modal-head"><h3>Edit movement</h3><button class="modal-close" data-close="editMoveModalBackdrop">&times;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="editMoveId">
+      <div class="field">
+        <label>Wine</label>
+        <select id="editMoveWine"></select>
+      </div>
+      <div class="field">
+        <label>Event type</label>
+        <div class="radio-cards" id="editMoveTypeCards">
+          <label class="radio-card" data-type="move"><input type="radio" name="editMoveType" value="move">Transfer</label>
+          <label class="radio-card" data-type="remove"><input type="radio" name="editMoveType" value="remove">Sold / removed</label>
+          <label class="radio-card" data-type="tasting"><input type="radio" name="editMoveType" value="tasting">Tasting</label>
+        </div>
+      </div>
+      <div class="field-row" id="editFromToRow">
+        <div class="field" id="editFromField"><label>From</label>
+          <select id="editMoveFrom"><option value="bonded">Bonded Warehousing</option><option value="karen">Karen Warehouse</option><option value="westlands">Westlands Office</option></select>
+        </div>
+        <div class="field" id="editToField"><label>To</label>
+          <select id="editMoveTo"><option value="karen">Karen Warehouse</option><option value="bonded">Bonded Warehousing</option><option value="westlands">Westlands Office</option></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Quantity (bottles)</label><input id="editMoveQty" type="number" min="1"></div>
+        <div class="field"><label>Date</label><input id="editMoveDate" type="date"></div>
+      </div>
+      <div class="field"><label>Note</label><input id="editMoveNote" placeholder="Optional"></div>
+      <div class="hint">Stock at all locations will be automatically corrected to match your change. This won't resend an alert email.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" data-close="editMoveModalBackdrop">Cancel</button>
+      <button class="btn" id="btnSaveEditMove">Save changes</button>
+    </div>
   </div>
 </div>
 
@@ -747,24 +814,31 @@ function movementRow(m, short){
     : m.type==='remove' ? `<span class="badge red">Sold / removed</span>`
     : `<span class="badge amber">Tasting</span>`;
   const route = m.type==='move' ? `${locLabel(m.from)} → ${locLabel(m.to)}` : locLabel(m.location);
-  const emailBadge = m.type==='move' ? '<span class="badge gray">n/a</span>' :
-    m.emailStatus==='sent' ? '<span class="badge green">✓ Sent</span>' :
+  const emailBadge = m.emailStatus==='sent' ? '<span class="badge green">✓ Sent</span>' :
     m.emailStatus==='failed' ? '<span class="badge red">✕ Failed</span>' :
-    '<span class="badge gray">Not configured</span>';
+    m.emailStatus==='not_configured' ? '<span class="badge gray">Not configured</span>' :
+    '<span class="badge gray">—</span>';
   if(short){
     return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${typeBadge}</td><td>${m.qty}</td><td>${route}</td><td>${emailBadge}</td></tr>`;
   }
   const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
   return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${typeBadge}</td><td>${m.qty}</td><td>${route}</td>
-    <td>${inv?`<span class="mono">${esc(inv.number||'—')}</span>`:'—'}</td><td>${emailBadge}</td></tr>`;
+    <td>${inv?`<span class="mono">${esc(inv.number||'—')}</span>`:'—'}</td><td>${emailBadge}</td>
+    <td class="row-actions" style="white-space:nowrap;"><button class="btn ghost small" data-edit-move="${m.id}">Edit</button> <button class="btn ghost small" data-delete-move="${m.id}" style="color:var(--red);">Delete</button></td></tr>`;
 }
 function locLabel(key){ const l = LOCATIONS.find(l=>l.key===key); return l?l.label:key; }
+
+function wireMovementRowActions(container){
+  container.querySelectorAll('[data-edit-move]').forEach(b=>b.addEventListener('click', ()=>openEditMoveModal(b.dataset.editMove)));
+  container.querySelectorAll('[data-delete-move]').forEach(b=>b.addEventListener('click', ()=>deleteMovement(b.dataset.deleteMove)));
+}
 
 function renderMovements(){
   const body = document.getElementById('movementsBody');
   const rows = [...state.movements].sort((a,b)=>b.createdAt-a.createdAt);
   body.innerHTML = rows.length ? rows.map(m=>movementRow(m,false)).join('') :
-    `<tr class="empty-row"><td colspan="7">No movements logged yet.</td></tr>`;
+    `<tr class="empty-row"><td colspan="8">No movements logged yet.</td></tr>`;
+  wireMovementRowActions(body);
 }
 
 /* ---------- Render: Invoices ---------- */
@@ -1057,6 +1131,127 @@ function fileToBase64(file){
   });
 }
 
+/* ---------- Edit / Delete movement ---------- */
+async function deleteMovement(id){
+  const m = state.movements.find(mv=>mv.id===id);
+  if(!m) return;
+  const w = wineById(m.wineId);
+  const label = w ? w.name : 'this wine';
+  if(!confirm(`Delete this movement for "${label}"? Stock at all locations will be adjusted back automatically.`)) return;
+  if(w){
+    if(m.type==='move'){ w.stock[m.to] -= m.qty; w.stock[m.from] += m.qty; }
+    else { w.stock[m.location] += m.qty; }
+  }
+  state.movements = state.movements.filter(mv=>mv.id!==id);
+  let invoicesChanged = false;
+  invoicesIndex.forEach(inv=>{
+    if(inv.movementIds && inv.movementIds.includes(id)){
+      inv.movementIds = inv.movementIds.filter(mid=>mid!==id);
+      invoicesChanged = true;
+    }
+  });
+  if(invoicesChanged) await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
+  await saveJSON(STATE_KEY, state, true);
+  renderAll();
+  toast('Movement deleted — stock restored', 'success');
+}
+
+const editMoveBackdrop = document.getElementById('editMoveModalBackdrop');
+function openEditMoveModal(id){
+  const m = state.movements.find(mv=>mv.id===id);
+  if(!m) return;
+  document.getElementById('editMoveId').value = m.id;
+  document.getElementById('editMoveWine').innerHTML = wineOptionsHtml();
+  document.getElementById('editMoveWine').value = m.wineId;
+  document.getElementById('editMoveQty').value = m.qty;
+  document.getElementById('editMoveDate').value = m.date;
+  document.getElementById('editMoveNote').value = m.note || '';
+  setEditMoveType(m.type);
+  if(m.type==='move'){
+    document.getElementById('editMoveFrom').value = m.from;
+    document.getElementById('editMoveTo').value = m.to;
+  } else {
+    document.getElementById('editMoveFrom').value = m.location;
+  }
+  editMoveBackdrop.classList.add('open');
+}
+function setEditMoveType(type){
+  document.querySelectorAll('#editMoveTypeCards .radio-card').forEach(c=>{
+    const active = c.dataset.type===type;
+    c.classList.toggle('active', active);
+    c.querySelector('input').checked = active;
+  });
+  document.getElementById('editFromToRow').style.display = type==='move' ? 'grid' : 'none';
+  document.getElementById('editToField').style.display = type==='move' ? 'block' : 'none';
+  editMoveBackdrop.dataset.type = type;
+  document.getElementById('editFromField').querySelector('label').textContent = type==='move' ? 'From' : 'Location';
+}
+document.querySelectorAll('#editMoveTypeCards .radio-card').forEach(c=>{
+  c.addEventListener('click', ()=> setEditMoveType(c.dataset.type));
+});
+
+document.getElementById('btnSaveEditMove').addEventListener('click', async ()=>{
+  const id = document.getElementById('editMoveId').value;
+  const m = state.movements.find(mv=>mv.id===id);
+  if(!m) return;
+
+  const oldWine = wineById(m.wineId);
+  const original = {type:m.type, qty:m.qty, from:m.from, to:m.to, location:m.location};
+  function reverseOld(){
+    if(!oldWine) return;
+    if(original.type==='move'){ oldWine.stock[original.to] -= original.qty; oldWine.stock[original.from] += original.qty; }
+    else { oldWine.stock[original.location] += original.qty; }
+  }
+  function reapplyOld(){
+    if(!oldWine) return;
+    if(original.type==='move'){ oldWine.stock[original.from] -= original.qty; oldWine.stock[original.to] += original.qty; }
+    else { oldWine.stock[original.location] -= original.qty; }
+  }
+
+  const newWineId = document.getElementById('editMoveWine').value;
+  const newWine = wineById(newWineId);
+  const type = editMoveBackdrop.dataset.type || 'move';
+  const qty = Math.max(1, parseInt(document.getElementById('editMoveQty').value||0));
+  const date = document.getElementById('editMoveDate').value || todayStr();
+  const note = document.getElementById('editMoveNote').value.trim();
+  const from = document.getElementById('editMoveFrom').value;
+  const to = document.getElementById('editMoveTo').value;
+
+  if(!newWine){ toast('Choose a wine', 'error'); return; }
+  if(type==='move' && from===to){ toast('From and To must differ', 'error'); return; }
+
+  reverseOld(); // temporarily undo the original effect so we can validate cleanly
+
+  if(type==='move'){
+    if(newWine.stock[from] < qty){
+      reapplyOld();
+      toast(`Not enough stock of "${newWine.name}" at ${locLabel(from)} (have ${newWine.stock[from]}, need ${qty})`, 'error');
+      return;
+    }
+    newWine.stock[from] -= qty; newWine.stock[to] += qty;
+    m.from = from; m.to = to; delete m.location;
+  } else {
+    if(newWine.stock[from] < qty){
+      reapplyOld();
+      toast(`Not enough stock of "${newWine.name}" at ${locLabel(from)} (have ${newWine.stock[from]}, need ${qty})`, 'error');
+      return;
+    }
+    newWine.stock[from] -= qty;
+    m.location = from; delete m.from; delete m.to;
+  }
+
+  m.wineId = newWineId;
+  m.type = type;
+  m.qty = qty;
+  m.date = date;
+  m.note = note;
+
+  await saveJSON(STATE_KEY, state, true);
+  closeModal('editMoveModalBackdrop');
+  renderAll();
+  toast('Movement updated — stock adjusted', 'success');
+});
+
 /* ---------- Modal close ---------- */
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', ()=>closeModal(b.dataset.close)));
 document.querySelectorAll('.modal-backdrop').forEach(bd=>bd.addEventListener('click', e=>{ if(e.target===bd) closeModal(bd.id); }));
@@ -1283,7 +1478,8 @@ function renderDepletedDetail(filter){
   if(filter==='tasting') rows = rows.filter(m=>m.type==='tasting');
   rows = rows.sort((a,b)=>b.createdAt-a.createdAt);
   body.innerHTML = rows.length ? rows.map(m=>movementRow(m,false)).join('') :
-    `<tr class="empty-row"><td colspan="7">No records for this filter.</td></tr>`;
+    `<tr class="empty-row"><td colspan="8">No records for this filter.</td></tr>`;
+  wireMovementRowActions(body);
   document.querySelectorAll('#depletedFilterBtns button').forEach(b=>b.classList.toggle('active', b.dataset.filter===filter));
 }
 document.getElementById('depletedFilterBtns').addEventListener('click', e=>{
