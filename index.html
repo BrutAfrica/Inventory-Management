@@ -16,27 +16,27 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
-    --bg:#F7F2E8;
-    --surface:#FFFDF9;
-    --surface-2:#FBF6EC;
-    --ink:#241A15;
-    --ink-soft:#6E5F52;
-    --ink-faint:#A6957F;
-    --wine:#6E1423;
-    --wine-dark:#4A0E18;
-    --wine-soft:#F3E1E1;
-    --gold:#A9812E;
-    --gold-soft:#F1E6C8;
+    --bg:#F3F6F8;
+    --surface:#FFFFFF;
+    --surface-2:#F7FAFC;
+    --ink:#161B1F;
+    --ink-soft:#5B6772;
+    --ink-faint:#98A5B0;
+    --wine:#004E7A;
+    --wine-dark:#013A5C;
+    --wine-soft:#E1EDF3;
+    --gold:#3E86AC;
+    --gold-soft:#E7F1F6;
     --green:#3F6B4C;
     --green-soft:#E4EFE3;
     --amber:#B4700F;
     --amber-soft:#F6E7CC;
     --red:#9E3434;
     --red-soft:#F5E1DF;
-    --line:#E6DCC6;
-    --line-soft:#EFE7D5;
+    --line:#DCE4EA;
+    --line-soft:#E9EEF2;
     --radius:10px;
-    --shadow:0 1px 2px rgba(36,26,21,0.06), 0 8px 24px -12px rgba(36,26,21,0.18);
+    --shadow:0 1px 2px rgba(22,27,31,0.06), 0 8px 24px -12px rgba(22,27,31,0.16);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -68,8 +68,8 @@
   .brand{display:flex;align-items:center;gap:12px;}
   .brand-mark{
     width:38px;height:38px;border-radius:50%;
-    background:radial-gradient(circle at 32% 28%, #8A1B2C, var(--wine-dark) 70%);
-    box-shadow:inset 0 0 0 3px rgba(255,255,255,0.12);
+    background:radial-gradient(circle at 32% 28%, #0C6C9D, var(--wine-dark) 70%);
+    box-shadow:inset 0 0 0 3px rgba(255,255,255,0.14);
     flex-shrink:0;
   }
   .brand-text .eyebrow{
@@ -149,14 +149,14 @@
 
   /* Forms / Modal */
   .modal-backdrop{
-    position:fixed;inset:0;background:rgba(36,26,21,0.45);
+    position:fixed;inset:0;background:rgba(22,27,31,0.45);
     display:none;align-items:flex-start;justify-content:center;
     padding:5vh 16px;overflow-y:auto;z-index:50;
   }
   .modal-backdrop.open{display:flex;}
   .modal{
     background:var(--surface);border-radius:12px;width:100%;max-width:520px;
-    box-shadow:0 20px 60px -10px rgba(36,26,21,0.35);
+    box-shadow:0 20px 60px -10px rgba(22,27,31,0.35);
     animation:pop .18s ease;
   }
   @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98);}to{opacity:1;transform:none;}}
