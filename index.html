@@ -12,6 +12,8 @@
 <meta name="theme-color" content="#4A0E18">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png"><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --bg:#F7F2E8;
@@ -222,6 +224,10 @@
     <div style="font-size:12px;color:var(--ink-soft);" id="lastSaved">—</div>
   </div>
 
+  <div id="cloudBanner" style="display:none;background:var(--amber-soft);color:#5F4A17;border:1px solid #E4C079;border-radius:8px;padding:10px 16px;margin-top:16px;font-size:12.5px;">
+    ⚠️ Not connected to shared storage yet — your team won't see each other's changes, and nothing you enter will be saved after you close this page. <a href="#" data-goto="settings" style="color:var(--wine);font-weight:600;">Set it up in Settings →</a>
+  </div>
+
   <nav class="tabs" id="tabs">
     <button data-tab="dashboard" class="active">Dashboard</button>
     <button data-tab="wines">Wines</button>
@@ -351,6 +357,31 @@
         <div><h2>Settings</h2><p>Business info and automatic email alerts</p></div>
       </div>
       <div class="panel">
+        <div class="panel-body">
+          <div class="field">
+            <label>Shared storage status</label>
+            <div style="font-size:13px;padding:2px 0;"><span class="status-dot off" id="cloudStatusDot"></span><span id="cloudStatusText">Not connected</span></div>
+          </div>
+          <div class="note-box" style="margin-bottom:14px;">
+            <strong>Why this is needed.</strong> Since everyone opens this app from their own phone or computer, it needs one shared place to keep the data — otherwise each device has its own separate copy. This uses <a href="https://firebase.google.com" target="_blank" rel="noopener">Firebase</a> (Google's free-tier cloud database, no credit card needed for this scale of use):
+            <ol style="margin:8px 0 0;padding-left:18px;">
+              <li>Go to <span class="mono">console.firebase.google.com</span>, sign in with any Google account, click "Add project", give it any name (e.g. "brut-africa"), and finish creation.</li>
+              <li>In your new project, click the <strong>Web icon (&lt;/&gt;)</strong> to register a web app. Give it any nickname and click "Register app".</li>
+              <li>Firebase shows a code snippet with a <span class="mono">firebaseConfig</span> object. Copy that whole object and paste it below.</li>
+              <li>In the left sidebar, go to <strong>Build → Firestore Database</strong>, click "Create database", choose any region, and start in <strong>test mode</strong>.</li>
+            </ol>
+          </div>
+          <div id="cloudConfigWrap">
+            <div class="field">
+              <label>Firebase config (paste the whole object)</label>
+              <textarea id="firebaseConfigInput" rows="6" placeholder='{ apiKey: "...", authDomain: "...", projectId: "...", ... }'></textarea>
+            </div>
+            <button class="btn" id="btnConnectFirebase">Connect</button>
+          </div>
+          <button class="btn secondary small" id="btnDisconnectFirebase" style="display:none;margin-top:10px;">Change project</button>
+        </div>
+      </div>
+      <div class="panel">
         <div class="panel-body settings-grid">
           <div>
             <div class="field"><label>Business name</label><input id="setBizName" type="text"></div>
@@ -470,25 +501,89 @@
 <div id="toasts"></div>
 
 <script>
-/* ---------- Storage helpers ---------- */
-const STATE_KEY = 'inventory-state';
-const INVOICE_INDEX_KEY = 'invoices-index';
+/* ---------- Cloud storage (Firebase Firestore) ---------- */
+const FIREBASE_CONFIG_KEY = 'brut-africa-firebase-config';
+const COLLECTION = 'brut-africa-data';
+let db = null;
 
+function firestoreDocRef(key){
+  return db.collection(COLLECTION).doc(key.replace(/[:/]/g, '_'));
+}
 async function loadJSON(key, shared, fallback){
+  if(!db) return fallback;
   try{
-    const r = await window.storage.get(key, shared);
-    return r && r.value ? JSON.parse(r.value) : fallback;
+    const snap = await firestoreDocRef(key).get();
+    return snap.exists ? JSON.parse(snap.data().value) : fallback;
   }catch(e){ return fallback; }
 }
 async function saveJSON(key, value, shared){
+  if(!db){ toast('Not connected to shared storage — set it up in Settings', 'error'); return; }
   try{
-    await window.storage.set(key, JSON.stringify(value), shared);
+    await firestoreDocRef(key).set({value: JSON.stringify(value)});
     setSavedStamp();
-  }catch(e){ toast('Could not save — check connection', 'error'); }
+  }catch(e){ toast('Could not save — check your connection', 'error'); }
 }
 function setSavedStamp(){
   document.getElementById('lastSaved').textContent = 'Saved ' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 }
+function parseFirebaseConfigInput(raw){
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if(start===-1 || end===-1) throw new Error('No config object found in that text');
+  const objStr = raw.slice(start, end+1);
+  return new Function('return (' + objStr + ')')();
+}
+function updateCloudStatusUI(){
+  const connected = !!db;
+  document.getElementById('cloudStatusDot').className = 'status-dot ' + (connected?'on':'off');
+  document.getElementById('cloudStatusText').textContent = connected ? 'Connected — everyone shares this data' : 'Not connected';
+  document.getElementById('cloudConfigWrap').style.display = connected ? 'none' : 'block';
+  document.getElementById('btnDisconnectFirebase').style.display = connected ? 'inline-flex' : 'none';
+  document.getElementById('cloudBanner').style.display = connected ? 'none' : 'block';
+}
+async function connectFirebase(cfg, silent){
+  try{
+    if(!firebase.apps || !firebase.apps.length){ firebase.initializeApp(cfg); }
+    db = firebase.firestore();
+    localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(cfg));
+    updateCloudStatusUI();
+    await reloadFromCloud();
+    if(!silent) toast('Connected — data will now sync for your whole team', 'success');
+  }catch(e){
+    db = null;
+    updateCloudStatusUI();
+    if(!silent) toast('Could not connect — check the config was pasted correctly', 'error');
+  }
+}
+async function reloadFromCloud(){
+  const loadedState = await loadJSON(STATE_KEY, true, null);
+  if(loadedState){
+    state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}}, loadedState);
+    state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', notifyEmail:''}, state.settings||{});
+  }
+  invoicesIndex = await loadJSON(INVOICE_INDEX_KEY, true, []);
+  document.getElementById('bizName').textContent = state.businessName || 'Brut Africa';
+  renderAll();
+}
+document.getElementById('btnConnectFirebase').addEventListener('click', async ()=>{
+  const raw = document.getElementById('firebaseConfigInput').value.trim();
+  if(!raw){ toast('Paste your Firebase config first', 'error'); return; }
+  try{
+    const cfg = parseFirebaseConfigInput(raw);
+    await connectFirebase(cfg, false);
+  }catch(e){ toast('Could not read that config — paste the full object from Firebase', 'error'); }
+});
+document.getElementById('btnDisconnectFirebase').addEventListener('click', ()=>{
+  if(!confirm('Disconnect from this Firebase project? You can reconnect (or connect a different one) anytime.')) return;
+  localStorage.removeItem(FIREBASE_CONFIG_KEY);
+  db = null;
+  updateCloudStatusUI();
+  toast('Disconnected', 'success');
+});
+
+/* ---------- Storage helpers ---------- */
+const STATE_KEY = 'inventory-state';
+const INVOICE_INDEX_KEY = 'invoices-index';
 
 /* ---------- State ---------- */
 const LOCATIONS = [
@@ -630,9 +725,8 @@ function renderInvoices(){
 }
 async function viewInvoice(id){
   try{
-    const r = await window.storage.get('invoice:'+id, true);
-    if(!r) throw new Error('missing');
-    const data = JSON.parse(r.value);
+    const data = await loadJSON('invoice:'+id, true, null);
+    if(!data) throw new Error('missing');
     const w = document.createElement('a');
     w.href = data.fileData; w.download = data.fileName; w.click();
   }catch(e){ toast('Could not load that invoice file', 'error'); }
@@ -776,7 +870,7 @@ document.getElementById('btnSaveMove').addEventListener('click', async ()=>{
           fileName = file.name;
           fileData = await fileToBase64(file);
           try{
-            await window.storage.set('invoice:'+invoiceId, JSON.stringify({id:invoiceId, fileName, fileData}), true);
+            await saveJSON('invoice:'+invoiceId, {id:invoiceId, fileName, fileData}, true);
           }catch(e){ toast('Invoice file could not be saved (too large?) — record kept without file', 'error'); fileName=''; fileData=''; }
         }
         invoicesIndex.push({id:invoiceId, number:invNumber, customer:invCustomer, date, fileName, movementId: movement.id});
@@ -1016,14 +1110,14 @@ function renderAll(){
 
 /* ---------- Init ---------- */
 async function init(){
-  const loadedState = await loadJSON(STATE_KEY, true, null);
-  if(loadedState){
-    state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}}, loadedState);
-    state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', notifyEmail:''}, state.settings||{});
+  updateCloudStatusUI();
+  const savedCfg = localStorage.getItem(FIREBASE_CONFIG_KEY);
+  if(savedCfg){
+    try{ await connectFirebase(JSON.parse(savedCfg), true); }
+    catch(e){ updateCloudStatusUI(); renderAll(); }
+  } else {
+    renderAll();
   }
-  invoicesIndex = await loadJSON(INVOICE_INDEX_KEY, true, []);
-  document.getElementById('bizName').textContent = state.businessName || 'Brut Africa';
-  renderAll();
 }
 init();
 </script>
