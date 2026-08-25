@@ -1031,7 +1031,7 @@ async function saveMovementInner(){
   await saveJSON(STATE_KEY, state, true);
 
   let emailNote = '';
-  if(type!=='move' && newMovements.length){
+  if(newMovements.length){
     const saveBtn = document.getElementById('btnSaveMove');
     saveBtn.textContent = 'Sending alert email…';
     const result = await sendBatchAlertEmail(newMovements, note);
@@ -1069,8 +1069,12 @@ async function sendBatchAlertEmail(movements, sharedNote){
     return {status:'not_configured'};
   }
   const first = movements[0];
-  const eventLabel = first.type==='remove' ? 'Left storage (sold / removed to customer)' : 'Used in tasting';
-  const location = first.location ? locLabel(first.location) : '';
+  const eventLabel = first.type==='remove' ? 'Left storage (sold / removed to customer)'
+    : first.type==='tasting' ? 'Used in tasting'
+    : 'Moved between locations';
+  const location = first.type==='move'
+    ? `${locLabel(first.from)} → ${locLabel(first.to)}`
+    : (first.location ? locLabel(first.location) : '');
   const linesText = movements.map(m=>{
     const w = wineById(m.wineId);
     const name = w ? (w.name + (w.vintage ? ` '${w.vintage}` : '')) : 'Unknown wine';
