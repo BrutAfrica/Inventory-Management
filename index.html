@@ -185,6 +185,20 @@
   .stock-strip{display:flex;gap:14px;font-size:12px;color:var(--ink-soft);margin-top:6px;flex-wrap:wrap;}
   .stock-strip b{color:var(--ink);}
 
+  .move-line{
+    display:grid;grid-template-columns:1fr 74px 96px 30px;gap:8px;align-items:start;
+    padding:10px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px;background:var(--surface-2);
+  }
+  .move-line select, .move-line input{margin:0;}
+  .move-line .line-stock{grid-column:1 / -1;font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+  .move-line .line-stock b{color:var(--ink);}
+  .line-remove{
+    background:none;border:1px solid var(--line);border-radius:7px;color:var(--red);
+    width:32px;height:34px;font-size:16px;line-height:1;cursor:pointer;
+  }
+  .line-remove:hover{background:var(--red-soft);}
+  @media(max-width:600px){.move-line{grid-template-columns:1fr 1fr;} .line-remove{grid-column:2;justify-self:end;width:auto;padding:0 10px;}}
+
   /* Toasts */
   #toasts{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:60;}
   .toast{
@@ -391,7 +405,7 @@
               This app sends alerts itself the moment stock leaves a location or gets poured for a tasting, with no click needed. Since it runs in your browser, it sends through <a href="https://www.emailjs.com" target="_blank" rel="noopener">EmailJS</a> (free tier is fine — ~200 emails/month). Takes 5 minutes:
               <ol style="margin:8px 0 0;padding-left:18px;">
                 <li>Create a free account at emailjs.com, connect your Gmail/Outlook as the "Service".</li>
-                <li>Create an Email Template with variables: <span class="mono">{{wine_name}}</span>, <span class="mono">{{event_type}}</span>, <span class="mono">{{quantity}}</span>, <span class="mono">{{location}}</span>, <span class="mono">{{date}}</span>, <span class="mono">{{note}}</span>. Set the "To" field to your alert address.</li>
+                <li>Create an Email Template with variables: <span class="mono">{{wine_name}}</span>, <span class="mono">{{event_type}}</span>, <span class="mono">{{quantity}}</span>, <span class="mono">{{location}}</span>, <span class="mono">{{date}}</span>, <span class="mono">{{note}}</span>. Set the "To" field to your alert address. One email is sent per movement entry — if you log several wines together, <span class="mono">{{wine_name}}</span> lists all of them (one per line) and <span class="mono">{{quantity}}</span> is the combined total.</li>
                 <li>Paste the Service ID, Template ID and Public Key below.</li>
               </ol>
               Until these are filled in, alerts are still logged in-app (Movements tab) but marked "not sent."
@@ -453,14 +467,9 @@
 
 <!-- Movement Modal -->
 <div class="modal-backdrop" id="moveModalBackdrop">
-  <div class="modal">
+  <div class="modal" style="max-width:640px;">
     <div class="modal-head"><h3>Log movement</h3><button class="modal-close" data-close="moveModalBackdrop">&times;</button></div>
     <div class="modal-body">
-      <div class="field">
-        <label>Wine</label>
-        <select id="moveWine"></select>
-        <div class="stock-strip" id="moveStockStrip"></div>
-      </div>
       <div class="field">
         <label>Event type</label>
         <div class="radio-cards" id="moveTypeCards">
@@ -478,10 +487,15 @@
         </div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Quantity (bottles)</label><input id="moveQty" type="number" min="1" value="1"></div>
         <div class="field"><label>Date</label><input id="moveDate" type="date"></div>
+        <div class="field"><label>Note</label><input id="moveNote" placeholder="Optional — e.g. customer name, tasting event"></div>
       </div>
-      <div class="field"><label>Note</label><input id="moveNote" placeholder="Optional — e.g. customer name, tasting event"></div>
+
+      <div class="field" style="margin-top:6px;">
+        <label>Wines &amp; quantities</label>
+        <div id="moveLines"></div>
+        <button class="btn secondary small" id="btnAddMoveLine" type="button" style="margin-top:4px;">+ Add another wine</button>
+      </div>
 
       <div id="invoiceFields" style="display:none;">
         <div class="field-row">
@@ -489,6 +503,7 @@
           <div class="field"><label>Customer</label><input id="invCustomer" placeholder="Customer name"></div>
         </div>
         <div class="field"><label>Attach invoice (from Zoho)</label><input id="invFile" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
+        <div class="hint">One invoice can cover every wine listed above — it'll be attached to all of them.</div>
       </div>
     </div>
     <div class="modal-foot">
@@ -710,14 +725,19 @@ function renderInvoices(){
   }
   const rows = [...invoicesIndex].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
   body.innerHTML = rows.map(inv=>{
-    const m = state.movements.find(mv=>mv.id===inv.movementId);
-    const w = m ? wineById(m.wineId) : null;
+    const ids = inv.movementIds && inv.movementIds.length ? inv.movementIds : (inv.movementId ? [inv.movementId] : []);
+    const movs = ids.map(id=>state.movements.find(mv=>mv.id===id)).filter(Boolean);
+    const wineLines = movs.map(m=>{
+      const w = wineById(m.wineId);
+      return `${w?esc(w.name):'—'} <span class="wine-sub">(${m.qty})</span>`;
+    });
+    const totalQty = movs.reduce((s,m)=>s+m.qty,0);
     return `<tr>
       <td>${fmtDate(inv.date)}</td>
       <td class="mono">${esc(inv.number||'—')}</td>
       <td>${esc(inv.customer||'—')}</td>
-      <td>${w?esc(w.name):'—'}</td>
-      <td>${m?m.qty:'—'}</td>
+      <td>${wineLines.length ? wineLines.join('<br>') : '—'}</td>
+      <td>${totalQty || '—'}</td>
       <td>${inv.fileName ? `<span class="filelink" data-view-invoice="${inv.id}">${esc(inv.fileName)}</span>` : '—'}</td>
     </tr>`;
   }).join('');
@@ -790,26 +810,56 @@ document.getElementById('btnSaveWine').addEventListener('click', async ()=>{
   toast('Wine saved', 'success');
 });
 
-/* ---------- Movement modal ---------- */
+/* ---------- Movement modal (multi-wine, bottles or cases) ---------- */
+const CASE_SIZE = 6;
 const moveBackdrop = document.getElementById('moveModalBackdrop');
-function populateMoveWineSelect(){
-  const sel = document.getElementById('moveWine');
-  sel.innerHTML = state.wines.map(w=>`<option value="${w.id}">${esc(w.name)}${w.vintage?` '${esc(w.vintage)}`:''}</option>`).join('');
-  updateStockStrip();
+let moveLineSeq = 0;
+
+function wineOptionsHtml(){
+  return state.wines.map(w=>`<option value="${w.id}">${esc(w.name)}${w.vintage?` '${esc(w.vintage)}`:''}</option>`).join('');
 }
-function updateStockStrip(){
-  const w = wineById(document.getElementById('moveWine').value);
-  const strip = document.getElementById('moveStockStrip');
-  if(!w){ strip.innerHTML=''; return; }
-  strip.innerHTML = `<span>Bonded: <b>${w.stock.bonded}</b></span><span>Karen: <b>${w.stock.karen}</b></span><span>Westlands: <b>${w.stock.westlands}</b></span>`;
+function addMoveLine(){
+  moveLineSeq++;
+  const lineId = 'line'+moveLineSeq;
+  const div = document.createElement('div');
+  div.className = 'move-line';
+  div.dataset.lineId = lineId;
+  div.innerHTML = `
+    <select class="line-wine">${wineOptionsHtml()}</select>
+    <input type="number" class="line-qty" min="1" value="1">
+    <select class="line-unit">
+      <option value="case" selected>Cases (×6)</option>
+      <option value="bottle">Bottles</option>
+    </select>
+    <button type="button" class="line-remove" title="Remove this wine">&times;</button>
+    <div class="line-stock"></div>
+  `;
+  document.getElementById('moveLines').appendChild(div);
+  div.querySelector('.line-wine').addEventListener('change', ()=>updateLineStock(div));
+  div.querySelector('.line-remove').addEventListener('click', ()=>{
+    if(document.querySelectorAll('.move-line').length <= 1){ toast('At least one wine is needed', 'error'); return; }
+    div.remove();
+  });
+  updateLineStock(div);
 }
-document.getElementById('moveWine').addEventListener('change', updateStockStrip);
+function updateLineStock(lineEl){
+  const w = wineById(lineEl.querySelector('.line-wine').value);
+  const stockEl = lineEl.querySelector('.line-stock');
+  if(!w){ stockEl.innerHTML=''; return; }
+  stockEl.innerHTML = `<span>In stock — Bonded: <b>${w.stock.bonded}</b></span> · <span>Karen: <b>${w.stock.karen}</b></span> · <span>Westlands: <b>${w.stock.westlands}</b></span>`;
+}
+function refreshAllLineStocks(){
+  document.querySelectorAll('.move-line').forEach(updateLineStock);
+}
+document.getElementById('btnAddMoveLine').addEventListener('click', addMoveLine);
+
 document.getElementById('btnQuickMove').addEventListener('click', openMoveModal);
 document.getElementById('btnLogMovement').addEventListener('click', openMoveModal);
 function openMoveModal(){
   if(!state.wines.length){ toast('Add a wine first', 'error'); return; }
-  populateMoveWineSelect();
-  document.getElementById('moveQty').value = 1;
+  document.getElementById('moveLines').innerHTML = '';
+  moveLineSeq = 0;
+  addMoveLine();
   document.getElementById('moveDate').value = todayStr();
   document.getElementById('moveNote').value = '';
   document.getElementById('invNumber').value = '';
@@ -831,64 +881,100 @@ function setMoveType(type){
   document.getElementById('toField').style.display = type==='move' ? 'block' : 'none';
   document.getElementById('invoiceFields').style.display = type==='remove' ? 'block' : 'none';
   moveBackdrop.dataset.type = type;
+  const label = document.getElementById('fromField').querySelector('label');
+  label.textContent = type==='move' ? 'From' : 'Location';
 }
 function currentMoveType(){ return moveBackdrop.dataset.type || 'move'; }
+document.getElementById('moveFrom').addEventListener('change', refreshAllLineStocks);
 
 document.getElementById('btnSaveMove').addEventListener('click', async ()=>{
-  const wineId = document.getElementById('moveWine').value;
-  const w = wineById(wineId);
   const type = currentMoveType();
-  const qty = Math.max(1, parseInt(document.getElementById('moveQty').value||0));
   const date = document.getElementById('moveDate').value || todayStr();
   const note = document.getElementById('moveNote').value.trim();
-  if(!w){ toast('Choose a wine', 'error'); return; }
+  const from = document.getElementById('moveFrom').value;
+  const to = document.getElementById('moveTo').value;
 
-  let movement = {id: uid(), wineId, type, qty, date, note, createdAt: Date.now(), emailStatus:'pending'};
+  if(type==='move' && from===to){ toast('From and To must differ', 'error'); return; }
 
-  if(type==='move'){
-    const from = document.getElementById('moveFrom').value;
-    const to = document.getElementById('moveTo').value;
-    if(from===to){ toast('From and To must differ', 'error'); return; }
-    if(w.stock[from] < qty){ toast(`Not enough stock at ${locLabel(from)}`, 'error'); return; }
-    w.stock[from] -= qty; w.stock[to] += qty;
-    movement.from = from; movement.to = to;
-  } else {
-    const location = document.getElementById('moveFrom').value; // reused as "location" field for remove/tasting
-    if(w.stock[location] < qty){ toast(`Not enough stock at ${locLabel(location)}`, 'error'); return; }
-    w.stock[location] -= qty;
-    movement.location = location;
-
-    if(type==='remove'){
-      const invNumber = document.getElementById('invNumber').value.trim();
-      const invCustomer = document.getElementById('invCustomer').value.trim();
-      const fileInput = document.getElementById('invFile');
-      if(invNumber || invCustomer || (fileInput.files && fileInput.files[0])){
-        const invoiceId = uid();
-        let fileName = '', fileData = '';
-        if(fileInput.files && fileInput.files[0]){
-          const file = fileInput.files[0];
-          fileName = file.name;
-          fileData = await fileToBase64(file);
-          try{
-            await saveJSON('invoice:'+invoiceId, {id:invoiceId, fileName, fileData}, true);
-          }catch(e){ toast('Invoice file could not be saved (too large?) — record kept without file', 'error'); fileName=''; fileData=''; }
-        }
-        invoicesIndex.push({id:invoiceId, number:invNumber, customer:invCustomer, date, fileName, movementId: movement.id});
-        await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
-        movement.invoiceId = invoiceId;
-      }
+  // Gather and validate every line first (all-or-nothing)
+  const lineEls = Array.from(document.querySelectorAll('.move-line'));
+  const lines = [];
+  for(const el of lineEls){
+    const wineId = el.querySelector('.line-wine').value;
+    const w = wineById(wineId);
+    const rawQty = Math.max(1, parseInt(el.querySelector('.line-qty').value||0));
+    const unit = el.querySelector('.line-unit').value;
+    const qty = unit==='case' ? rawQty * CASE_SIZE : rawQty;
+    if(!w){ toast('Choose a wine for every line', 'error'); return; }
+    const checkLoc = type==='move' ? from : from; // moveFrom field doubles as "location" for remove/tasting
+    if(w.stock[checkLoc] < qty){
+      toast(`Not enough stock of "${w.name}" at ${locLabel(checkLoc)} (have ${w.stock[checkLoc]}, need ${qty})`, 'error');
+      return;
+    }
+    lines.push({wine:w, qty, unitLabel: unit==='case' ? `${rawQty} case${rawQty===1?'':'s'}` : `${rawQty} bottle${rawQty===1?'':'s'}`});
+  }
+  // Guard against the same wine appearing twice and jointly exceeding stock
+  const combined = {};
+  lines.forEach(l=>{ combined[l.wine.id] = (combined[l.wine.id]||0) + l.qty; });
+  for(const wid in combined){
+    const w = wineById(wid);
+    if(w.stock[from] < combined[wid]){
+      toast(`"${w.name}" total across lines (${combined[wid]}) exceeds stock at ${locLabel(from)} (${w.stock[from]})`, 'error');
+      return;
     }
   }
 
-  state.movements.push(movement);
+  // Create one shared invoice (for "remove") if any invoice info was given
+  let sharedInvoiceId = null;
+  if(type==='remove'){
+    const invNumber = document.getElementById('invNumber').value.trim();
+    const invCustomer = document.getElementById('invCustomer').value.trim();
+    const fileInput = document.getElementById('invFile');
+    if(invNumber || invCustomer || (fileInput.files && fileInput.files[0])){
+      sharedInvoiceId = uid();
+      let fileName = '', fileData = '';
+      if(fileInput.files && fileInput.files[0]){
+        const file = fileInput.files[0];
+        fileName = file.name;
+        fileData = await fileToBase64(file);
+        try{
+          await saveJSON('invoice:'+sharedInvoiceId, {id:sharedInvoiceId, fileName, fileData}, true);
+        }catch(e){ toast('Invoice file could not be saved (too large?) — record kept without file', 'error'); fileName=''; fileData=''; }
+      }
+      invoicesIndex.push({id:sharedInvoiceId, number:invNumber, customer:invCustomer, date, fileName, movementIds:[]});
+    }
+  }
+
+  // Apply each line
+  const newMovements = [];
+  for(const line of lines){
+    const w = line.wine;
+    const movement = {id: uid(), wineId:w.id, type, qty:line.qty, date, note: note ? `${note} (${line.unitLabel})` : line.unitLabel, createdAt: Date.now(), emailStatus:'pending'};
+    if(type==='move'){
+      w.stock[from] -= line.qty; w.stock[to] += line.qty;
+      movement.from = from; movement.to = to;
+    } else {
+      w.stock[from] -= line.qty;
+      movement.location = from;
+      if(sharedInvoiceId){
+        movement.invoiceId = sharedInvoiceId;
+        const inv = invoicesIndex.find(i=>i.id===sharedInvoiceId);
+        if(inv) inv.movementIds.push(movement.id);
+      }
+    }
+    state.movements.push(movement);
+    newMovements.push(movement);
+  }
+
+  if(sharedInvoiceId) await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
   await saveJSON(STATE_KEY, state, true);
   closeModal('moveModalBackdrop');
   renderAll();
-  toast('Movement logged', 'success');
+  toast(`${newMovements.length} movement${newMovements.length===1?'':'s'} logged`, 'success');
 
-  if(type!=='move'){
-    const result = await sendAlertEmail(movement, w);
-    movement.emailStatus = result;
+  if(type!=='move' && newMovements.length){
+    const result = await sendBatchAlertEmail(newMovements, note);
+    newMovements.forEach(m=>m.emailStatus = result);
     await saveJSON(STATE_KEY, state, true);
     renderAll();
     if(result==='sent') toast('Alert email sent automatically', 'success');
@@ -905,19 +991,53 @@ function fileToBase64(file){
   });
 }
 
-/* moveFrom label swap for remove/tasting (acts as "location") */
-const moveFromLabel = () => {
-  const field = document.getElementById('fromField').querySelector('label');
-  field.textContent = currentMoveType()==='move' ? 'From' : 'Location';
-};
-document.querySelectorAll('#moveTypeCards .radio-card').forEach(c=>c.addEventListener('click', moveFromLabel));
-
 /* ---------- Modal close ---------- */
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', ()=>closeModal(b.dataset.close)));
 document.querySelectorAll('.modal-backdrop').forEach(bd=>bd.addEventListener('click', e=>{ if(e.target===bd) closeModal(bd.id); }));
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
 /* ---------- Email (EmailJS REST, automatic) ---------- */
+async function sendBatchAlertEmail(movements, sharedNote){
+  const s = state.settings;
+  if(!s.emailjsServiceId || !s.emailjsTemplateId || !s.emailjsPublicKey){
+    return 'not_configured';
+  }
+  const first = movements[0];
+  const eventLabel = first.type==='remove' ? 'Left storage (sold / removed to customer)' : 'Used in tasting';
+  const location = first.location ? locLabel(first.location) : '';
+  const linesText = movements.map(m=>{
+    const w = wineById(m.wineId);
+    const name = w ? (w.name + (w.vintage ? ` '${w.vintage}` : '')) : 'Unknown wine';
+    return `${name} — ${m.qty} bottle${m.qty===1?'':'s'}`;
+  }).join('\n');
+  const totalQty = movements.reduce((sum,m)=>sum+m.qty, 0);
+  const payload = {
+    service_id: s.emailjsServiceId,
+    template_id: s.emailjsTemplateId,
+    user_id: s.emailjsPublicKey,
+    template_params: {
+      to_email: s.notifyEmail || '',
+      wine_name: linesText,
+      wines_list: linesText,
+      event_type: eventLabel,
+      quantity: totalQty,
+      location: location,
+      date: fmtDate(first.date),
+      note: sharedNote || '—',
+      business_name: state.businessName || 'Brut Africa'
+    }
+  };
+  try{
+    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    return res.ok ? 'sent' : 'failed';
+  }catch(e){
+    return 'failed';
+  }
+}
 async function sendAlertEmail(movement, wine){
   const s = state.settings;
   if(!s.emailjsServiceId || !s.emailjsTemplateId || !s.emailjsPublicKey){
