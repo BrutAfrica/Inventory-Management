@@ -737,9 +737,11 @@ function goto(tab){
 /* ---------- Render: Dashboard ---------- */
 function renderDashboard(){
   const row = document.getElementById('binRow');
-  const maxTotal = Math.max(1, ...LOCATIONS.map(l => state.wines.reduce((s,w)=>s+w.stock[l.key],0)));
+  const maxTotal = Math.max(1, ...LOCATIONS.map(l => state.wines.reduce((s,w)=>s+Math.max(0,w.stock[l.key]),0)));
   row.innerHTML = LOCATIONS.map(l=>{
-    const total = state.wines.reduce((s,w)=>s+w.stock[l.key],0);
+    const rawTotal = state.wines.reduce((s,w)=>s+w.stock[l.key],0);
+    const total = Math.max(0, rawTotal);
+    const hasIssue = state.wines.some(w=>w.stock[l.key] < 0);
     const skuCount = state.wines.filter(w=>w.stock[l.key]>0).length;
     const pct = Math.round((total/maxTotal)*100);
     return `<div class="bin" data-loc="${l.key}" role="button" tabindex="0">
@@ -750,6 +752,7 @@ function renderDashboard(){
         <div class="count">${total}<small>bottles</small></div>
         <div class="skus">${skuCount} wine${skuCount===1?'':'s'} on hand</div>
       </div>
+      ${hasIssue ? `<div style="margin-top:8px;font-size:11.5px;color:var(--red);font-weight:600;">⚠ Data issue here — tap to review</div>` : ''}
     </div>`;
   }).join('');
   row.querySelectorAll('.bin').forEach(el=>{
@@ -768,30 +771,38 @@ function openLocationModal(locKey){
   const loc = LOCATIONS.find(l=>l.key===locKey);
   if(!loc) return;
   document.getElementById('locationModalTitle').textContent = loc.label;
-  const winesHere = state.wines.filter(w=>w.stock[locKey] > 0).sort((a,b)=>a.name.localeCompare(b.name));
-  const totalBottles = winesHere.reduce((s,w)=>s+w.stock[locKey],0);
+  const winesHere = state.wines.filter(w=>w.stock[locKey] !== 0).sort((a,b)=>a.name.localeCompare(b.name));
+  const totalBottles = Math.max(0, winesHere.reduce((s,w)=>s+w.stock[locKey],0));
   document.getElementById('locationModalSubtitle').textContent =
     winesHere.length ? `${winesHere.length} wine${winesHere.length===1?'':'s'} · ${totalBottles} bottle${totalBottles===1?'':'s'} total` : 'No stock here yet';
   const body = document.getElementById('locationModalBody');
-  body.innerHTML = winesHere.length ? `
+  const hasIssue = winesHere.some(w=>w.stock[locKey] < 0);
+  body.innerHTML = (hasIssue ? `<div class="note-box" style="background:var(--red-soft);border-color:#E0AFAF;color:#7A2626;margin-bottom:14px;">⚠ One or more wines below show negative stock — this usually means two people logged conflicting movements before refreshing. Click <strong>Edit</strong> on that wine and correct the quantity to its true physical count.</div>` : '') +
+  (winesHere.length ? `
     <table>
-      <thead><tr><th>Wine</th><th>Bottles</th><th>Cases</th></tr></thead>
+      <thead><tr><th>Wine</th><th>Bottles</th><th>Cases</th><th></th></tr></thead>
       <tbody>
         ${winesHere.map(w=>{
           const qty = w.stock[locKey];
-          const cases = Math.floor(qty / CASE_SIZE);
-          const rem = qty % CASE_SIZE;
-          const casesLabel = qty < CASE_SIZE ? '—' : `${cases} case${cases===1?'':'s'}${rem ? ` + ${rem}` : ''}`;
+          const isBad = qty < 0;
+          const cases = Math.floor(Math.abs(qty) / CASE_SIZE);
+          const rem = Math.abs(qty) % CASE_SIZE;
+          const casesLabel = Math.abs(qty) < CASE_SIZE ? '—' : `${cases} case${cases===1?'':'s'}${rem ? ` + ${rem}` : ''}`;
           return `<tr>
             <td><div class="wine-name">${esc(w.name)}</div>${w.producer?`<div class="wine-sub">${esc(w.producer)}</div>`:''}</td>
-            <td>${qty}</td>
+            <td style="${isBad?'color:var(--red);font-weight:700;':''}">${isBad?'⚠ ':''}${qty}</td>
             <td>${casesLabel}</td>
+            <td>${isBad?`<button class="btn ghost small" data-fix-wine="${w.id}">Fix</button>`:''}</td>
           </tr>`;
         }).join('')}
       </tbody>
     </table>
-  ` : `<div class="empty-state"><p>Nothing stored here right now.</p></div>`;
+  ` : `<div class="empty-state"><p>Nothing stored here right now.</p></div>`);
   document.getElementById('locationModalBackdrop').classList.add('open');
+  body.querySelectorAll('[data-fix-wine]').forEach(b=>b.addEventListener('click', ()=>{
+    closeModal('locationModalBackdrop');
+    openWineModal(b.dataset.fixWine);
+  }));
 }
 
 /* ---------- Render: Wines ---------- */
@@ -1042,6 +1053,11 @@ async function saveMovementInner(){
 
   if(type==='move' && from===to){ toast('From and To must differ', 'error'); return; }
 
+  // Pull the latest shared numbers first — someone else on the team may have logged
+  // a movement moments ago, and validating against stale local numbers is how stock
+  // goes negative.
+  if(db) await reloadFromCloud();
+
   // Gather and validate every line first (all-or-nothing)
   const lineEls = Array.from(document.querySelectorAll('.move-line'));
   const lines = [];
@@ -1149,9 +1165,13 @@ async function deleteMovement(id){
   const w = wineById(m.wineId);
   const label = w ? w.name : 'this wine';
   if(!confirm(`Delete this movement for "${label}"? Stock at all locations will be adjusted back automatically.`)) return;
-  if(w){
-    if(m.type==='move'){ w.stock[m.to] -= m.qty; w.stock[m.from] += m.qty; }
-    else { w.stock[m.location] += m.qty; }
+  if(db) await reloadFromCloud();
+  const freshM = state.movements.find(mv=>mv.id===id);
+  if(!freshM){ toast('That movement was already removed', 'error'); return; }
+  const freshW = wineById(freshM.wineId);
+  if(freshW){
+    if(freshM.type==='move'){ freshW.stock[freshM.to] -= freshM.qty; freshW.stock[freshM.from] += freshM.qty; }
+    else { freshW.stock[freshM.location] += freshM.qty; }
   }
   state.movements = state.movements.filter(mv=>mv.id!==id);
   let invoicesChanged = false;
@@ -1203,8 +1223,9 @@ document.querySelectorAll('#editMoveTypeCards .radio-card').forEach(c=>{
 
 document.getElementById('btnSaveEditMove').addEventListener('click', async ()=>{
   const id = document.getElementById('editMoveId').value;
+  if(db) await reloadFromCloud();
   const m = state.movements.find(mv=>mv.id===id);
-  if(!m) return;
+  if(!m){ toast('This movement no longer exists — it may have been edited or deleted elsewhere', 'error'); closeModal('editMoveModalBackdrop'); return; }
 
   const oldWine = wineById(m.wineId);
   const original = {type:m.type, qty:m.qty, from:m.from, to:m.to, location:m.location};
