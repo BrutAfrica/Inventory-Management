@@ -312,7 +312,7 @@
       <div class="panel">
         <div class="panel-body">
           <div class="table-scroll"><table>
-            <thead><tr><th>Wine</th><th>SKU</th><th>Bonded</th><th>Karen</th><th>Westlands</th><th>Total</th><th></th></tr></thead>
+            <thead><tr><th>Wine</th><th>SKU</th><th>Bonded (btl)</th><th>Bonded (ctn)</th><th>Karen (btl)</th><th>Karen (ctn)</th><th>Westlands</th><th>Total</th><th></th></tr></thead>
             <tbody id="winesBody"></tbody>
           </table></div>
         </div>
@@ -727,6 +727,12 @@ function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtDate(d){ try{ return new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});}catch(e){return d;} }
 function wineById(id){ return state.wines.find(w=>w.id===id); }
 function totalStock(w){ return w.stock.bonded + w.stock.karen + w.stock.westlands; }
+function cartonLabel(qty){
+  const cartons = Math.floor(Math.abs(qty) / CASE_SIZE);
+  const rem = Math.abs(qty) % CASE_SIZE;
+  const sign = qty < 0 ? '-' : '';
+  return rem ? `${sign}${cartons} +${rem}` : `${sign}${cartons}`;
+}
 
 /* ---------- Toasts ---------- */
 function toast(msg, kind){
@@ -824,7 +830,7 @@ function openLocationModal(locKey){
 function renderWines(){
   const body = document.getElementById('winesBody');
   if(!state.wines.length){
-    body.innerHTML = `<tr class="empty-row"><td colspan="8">No wines added yet — click "Add wine" to build your list.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="9">No wines added yet — click "Add wine" to build your list.</td></tr>`;
     return;
   }
   body.innerHTML = state.wines.map(w=>`
@@ -832,7 +838,9 @@ function renderWines(){
       <td><div class="wine-name">${esc(w.name)}${w.vintage?` <span class="wine-sub">'${esc(w.vintage)}</span>`:''}</div><div class="wine-sub">${esc(w.producer||'')}</div></td>
       <td class="mono" style="font-size:11px;color:var(--ink-soft);white-space:nowrap;">${esc(w.sku||'—')}</td>
       <td>${w.stock.bonded}</td>
+      <td style="color:var(--ink-soft);font-size:12.5px;white-space:nowrap;">${cartonLabel(w.stock.bonded)}</td>
       <td>${w.stock.karen}</td>
+      <td style="color:var(--ink-soft);font-size:12.5px;white-space:nowrap;">${cartonLabel(w.stock.karen)}</td>
       <td>${w.stock.westlands}</td>
       <td><strong>${totalStock(w)}</strong></td>
       <td><button class="btn ghost small" data-edit-wine="${w.id}">Edit</button> <button class="btn ghost small" data-delete-wine="${w.id}" style="color:var(--red);">Delete</button></td>
