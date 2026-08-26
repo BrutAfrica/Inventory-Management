@@ -765,6 +765,7 @@ function renderDashboard(){
     const hasIssue = state.wines.some(w=>w.stock[l.key] < 0);
     const skuCount = state.wines.filter(w=>w.stock[l.key]>0).length;
     const pct = Math.round((total/maxTotal)*100);
+    const showCartons = l.key==='bonded' || l.key==='karen';
     return `<div class="bin" data-loc="${l.key}" role="button" tabindex="0">
       <div class="loc-label">Location · tap for details</div>
       <div class="loc-name">${l.label}</div>
@@ -773,6 +774,7 @@ function renderDashboard(){
         <div class="count">${total}<small>bottles</small></div>
         <div class="skus">${skuCount} wine${skuCount===1?'':'s'} on hand</div>
       </div>
+      ${showCartons ? `<div style="margin-top:6px;font-size:12px;color:var(--ink-soft);">${cartonLabel(total)} carton${Math.floor(total/CASE_SIZE)===1?'':'s'}</div>` : ''}
       ${hasIssue ? `<div style="margin-top:8px;font-size:11.5px;color:var(--red);font-weight:600;">⚠ Data issue here — tap to review</div>` : ''}
     </div>`;
   }).join('');
