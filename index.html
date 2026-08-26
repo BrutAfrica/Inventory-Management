@@ -138,6 +138,7 @@
   td{padding:10px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
   tr:last-child td{border-bottom:none;}
   .empty-row td{text-align:center;color:var(--ink-faint);padding:32px 10px;font-style:italic;}
+  .clickable-row:hover{background:var(--surface-2);}
 
   .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;}
   .badge.green{background:var(--green-soft);color:var(--green);}
@@ -352,14 +353,14 @@
     <!-- DEPLETED (SOLD & TASTED) -->
     <section id="tab-depleted">
       <div class="section-head">
-        <div><h2>Sold &amp; tasted</h2><p>Wine that's no longer in stock — sold to customers or poured for tastings</p></div>
+        <div><h2>Sold &amp; tasted</h2><p>Tap a customer (or Tastings) to see exactly what they took</p></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><h3>By wine</h3></div>
+        <div class="panel-head"><h3>By customer</h3></div>
         <div class="panel-body">
           <div class="table-scroll"><table>
-            <thead><tr><th>Wine</th><th>Sold</th><th>Tasting</th><th>Total gone</th></tr></thead>
-            <tbody id="depletedSummaryBody"></tbody>
+            <thead><tr><th>Customer</th><th>Wines</th><th>Bottles</th><th>Last activity</th></tr></thead>
+            <tbody id="depletedCustomerBody"></tbody>
           </table></div>
         </div>
       </div>
@@ -561,6 +562,20 @@
       <button class="modal-close" data-close="locationModalBackdrop">&times;</button>
     </div>
     <div class="modal-body" id="locationModalBody"></div>
+  </div>
+</div>
+
+<!-- Customer Detail Modal -->
+<div class="modal-backdrop" id="customerModalBackdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="customerModalTitle">Customer</h3>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;" id="customerModalSubtitle"></div>
+      </div>
+      <button class="modal-close" data-close="customerModalBackdrop">&times;</button>
+    </div>
+    <div class="modal-body" id="customerModalBody"></div>
   </div>
 </div>
 
@@ -1022,7 +1037,8 @@ function setMoveType(type){
     c.classList.toggle('active', active);
     c.querySelector('input').checked = active;
   });
-  document.getElementById('fromToRow').style.display = type==='move' ? 'grid' : 'none';
+  document.getElementById('fromToRow').style.display = 'grid';
+  document.getElementById('fromToRow').style.gridTemplateColumns = type==='move' ? '1fr 1fr' : '1fr';
   document.getElementById('toField').style.display = type==='move' ? 'block' : 'none';
   document.getElementById('invoiceFields').style.display = type==='remove' ? 'block' : 'none';
   moveBackdrop.dataset.type = type;
@@ -1212,7 +1228,8 @@ function setEditMoveType(type){
     c.classList.toggle('active', active);
     c.querySelector('input').checked = active;
   });
-  document.getElementById('editFromToRow').style.display = type==='move' ? 'grid' : 'none';
+  document.getElementById('editFromToRow').style.display = 'grid';
+  document.getElementById('editFromToRow').style.gridTemplateColumns = type==='move' ? '1fr 1fr' : '1fr';
   document.getElementById('editToField').style.display = type==='move' ? 'block' : 'none';
   editMoveBackdrop.dataset.type = type;
   document.getElementById('editFromField').querySelector('label').textContent = type==='move' ? 'From' : 'Location';
@@ -1579,32 +1596,64 @@ function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'
 
 /* ---------- Render: Depleted (Sold & Tasted) ---------- */
 let depletedFilter = 'all';
-function computeDepleted(){
-  const summary = {};
+function computeCustomerGroups(){
+  const groups = {}; // key -> {name, movements:[], isTasting}
   state.movements.forEach(m=>{
-    if(m.type==='remove' || m.type==='tasting'){
-      if(!summary[m.wineId]) summary[m.wineId] = {sold:0, tasting:0};
-      if(m.type==='remove') summary[m.wineId].sold += m.qty;
-      else summary[m.wineId].tasting += m.qty;
+    if(m.type==='remove'){
+      const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
+      const custName = inv && inv.customer ? inv.customer.trim() : '';
+      const key = custName ? 'cust:'+custName.toLowerCase() : 'cust:__none__';
+      if(!groups[key]) groups[key] = {name: custName || 'No customer recorded', movements: [], isTasting:false};
+      groups[key].movements.push(m);
+    } else if(m.type==='tasting'){
+      if(!groups['tasting']) groups['tasting'] = {name:'Tastings', movements: [], isTasting:true};
+      groups['tasting'].movements.push(m);
     }
   });
-  return summary;
+  return groups;
 }
 function renderDepleted(){
-  const summary = computeDepleted();
-  const body = document.getElementById('depletedSummaryBody');
-  const wineIds = Object.keys(summary);
-  body.innerHTML = wineIds.length ? wineIds.map(id=>{
-    const w = wineById(id);
-    const s = summary[id];
-    return `<tr>
-      <td><div class="wine-name">${w?esc(w.name):'—'}</div>${w&&w.vintage?`<div class="wine-sub">'${esc(w.vintage)}</div>`:''}</td>
-      <td>${s.sold}</td>
-      <td>${s.tasting}</td>
-      <td><strong>${s.sold+s.tasting}</strong></td>
+  const groups = computeCustomerGroups();
+  const body = document.getElementById('depletedCustomerBody');
+  const custGroups = Object.values(groups).filter(g=>!g.isTasting).sort((a,b)=>a.name.localeCompare(b.name));
+  const tastingGroup = groups['tasting'];
+  const ordered = tastingGroup ? [...custGroups, tastingGroup] : custGroups;
+
+  body.innerHTML = ordered.length ? ordered.map(g=>{
+    const totalQty = g.movements.reduce((s,m)=>s+m.qty,0);
+    const wineCount = new Set(g.movements.map(m=>m.wineId)).size;
+    const lastDate = g.movements.reduce((max,m)=> m.date>max?m.date:max, '');
+    return `<tr class="clickable-row" data-group="${esc(g.name)}" data-type="${g.isTasting?'tasting':'customer'}" style="cursor:pointer;">
+      <td><div class="wine-name">${g.isTasting?'🍷 ':''}${esc(g.name)}</div></td>
+      <td>${wineCount} wine${wineCount===1?'':'s'}</td>
+      <td>${totalQty} bottle${totalQty===1?'':'s'}</td>
+      <td>${lastDate?fmtDate(lastDate):'—'}</td>
     </tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="5">Nothing sold or tasted yet.</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="4">Nothing sold or tasted yet.</td></tr>`;
+  body.querySelectorAll('[data-group]').forEach(tr=>{
+    tr.addEventListener('click', ()=> openCustomerDetailModal(tr.dataset.group, tr.dataset.type));
+  });
   renderDepletedDetail(depletedFilter);
+}
+function openCustomerDetailModal(name, type){
+  const groups = computeCustomerGroups();
+  const group = type==='tasting' ? groups['tasting'] : Object.values(groups).find(g=>!g.isTasting && g.name===name);
+  if(!group) return;
+  document.getElementById('customerModalTitle').textContent = group.name;
+  const totalQty = group.movements.reduce((s,m)=>s+m.qty,0);
+  document.getElementById('customerModalSubtitle').textContent = `${group.movements.length} movement${group.movements.length===1?'':'s'} · ${totalQty} bottle${totalQty===1?'':'s'} total`;
+  const rows = [...group.movements].sort((a,b)=>b.createdAt-a.createdAt);
+  const body = document.getElementById('customerModalBody');
+  body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Wine</th><th>Qty</th><th>${type==='tasting'?'Note':'Invoice #'}</th></tr></thead><tbody>
+    ${rows.map(m=>{
+      const w = wineById(m.wineId);
+      let extra;
+      if(type==='tasting'){ extra = esc(m.note||'—'); }
+      else { const inv = m.invoiceId?invoicesIndex.find(i=>i.id===m.invoiceId):null; extra = inv?esc(inv.number||'—'):'—'; }
+      return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td><td>${extra}</td></tr>`;
+    }).join('')}
+  </tbody></table></div>`;
+  document.getElementById('customerModalBackdrop').classList.add('open');
 }
 function renderDepletedDetail(filter){
   depletedFilter = filter;
