@@ -364,7 +364,7 @@
         </div>
         <div class="panel-body" style="padding-top:0;">
           <div class="table-scroll"><table>
-            <thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Route</th><th>Invoice</th><th>Email</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Date</th><th>Wine(s)</th><th>Event</th><th>Qty</th><th>Route</th><th>Invoice / Ref</th><th>Email</th><th></th></tr></thead>
             <tbody id="movementsBody"></tbody>
           </table></div>
         </div>
@@ -419,7 +419,7 @@
         </div>
         <div class="panel-body" style="padding-top:0;">
           <div class="table-scroll"><table>
-            <thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Location</th><th>Invoice</th><th>Email</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Date</th><th>Wine(s)</th><th>Event</th><th>Qty</th><th>Location</th><th>Invoice / Ref</th><th>Email</th><th></th></tr></thead>
             <tbody id="depletedDetailBody"></tbody>
           </table></div>
         </div>
@@ -661,6 +661,20 @@
   </div>
 </div>
 
+<!-- Batch Detail Modal -->
+<div class="modal-backdrop" id="batchModalBackdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="batchModalTitle">Movement</h3>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;" id="batchModalSubtitle"></div>
+      </div>
+      <button class="modal-close" data-close="batchModalBackdrop">&times;</button>
+    </div>
+    <div class="modal-body" id="batchModalBody"></div>
+  </div>
+</div>
+
 <!-- Customer Detail Modal -->
 <div class="modal-backdrop" id="customerModalBackdrop">
   <div class="modal">
@@ -886,26 +900,31 @@ function renderDashboard(){
   });
 
   const feed = document.getElementById('recentActivityFeed');
-  const recent = [...state.movements].sort((a,b)=>b.createdAt-a.createdAt).slice(0,6);
-  if(!recent.length){
+  const recentBatches = computeBatches(state.movements).sort((a,b)=>b.createdAt-a.createdAt).slice(0,6);
+  if(!recentBatches.length){
     feed.innerHTML = `<div class="empty-state" style="padding:24px 8px;"><p>No activity yet — log your first movement to get started.</p></div>`;
   } else {
-    feed.innerHTML = recent.map(m=>{
-      const w = wineById(m.wineId);
-      const icon = m.type==='move' ? '🔄' : m.type==='received' ? '📥' : m.type==='remove' ? '📦' : '🍷';
-      const iconClass = m.type==='move' ? 'move' : m.type==='received' ? 'received' : m.type==='remove' ? 'remove' : 'tasting';
-      const eventLabel = m.type==='move' ? 'Transfer' : m.type==='received' ? 'Received' : m.type==='remove' ? 'Sold / removed' : 'Tasting';
-      const route = m.type==='move' ? `${locLabel(m.from)} → ${locLabel(m.to)}` : locLabel(m.location);
-      const alertBadge = m.emailStatus==='sent' ? '<span class="badge green">✓ Sent</span>' :
-        m.emailStatus==='failed' ? '<span class="badge red">✕ Failed</span>' : '';
-      return `<div class="activity-item">
+    feed.innerHTML = recentBatches.map(b=>{
+      const icon = b.type==='move' ? '🔄' : b.type==='received' ? '📥' : b.type==='remove' ? '📦' : '🍷';
+      const iconClass = b.type==='move' ? 'move' : b.type==='received' ? 'received' : b.type==='remove' ? 'remove' : 'tasting';
+      const eventLabel = b.type==='move' ? 'Transfer' : b.type==='received' ? 'Received' : b.type==='remove' ? 'Sold / removed' : 'Tasting';
+      const route = b.type==='move' ? `${locLabel(b.from)} → ${locLabel(b.to)}` : locLabel(b.location);
+      const alertBadge = b.emailStatus==='sent' ? '<span class="badge green">✓ Sent</span>' :
+        b.emailStatus==='failed' ? '<span class="badge red">✕ Failed</span>' : '';
+      const totalQty = b.movements.reduce((s,m)=>s+m.qty,0);
+      const wineCount = b.movements.length;
+      const wineSummary = wineCount===1 ? (wineById(b.movements[0].wineId)?.name || '—') : `${wineCount} wines`;
+      return `<div class="activity-item clickable-row" data-batch-id="${esc(b.batchId)}" style="cursor:pointer;">
         <div class="activity-icon ${iconClass}">${icon}</div>
         <div class="activity-main">
-          <div class="activity-title">${w?esc(w.name):'—'} <span class="badge gray">${eventLabel}</span> ${alertBadge}</div>
-          <div class="activity-sub">${m.qty} bottle${m.qty===1?'':'s'} · ${route} · ${fmtDate(m.date)}</div>
+          <div class="activity-title">${esc(wineSummary)} <span class="badge gray">${eventLabel}</span> ${alertBadge}</div>
+          <div class="activity-sub">${totalQty} bottle${totalQty===1?'':'s'} · ${route} · ${fmtDate(b.date)}</div>
         </div>
       </div>`;
     }).join('');
+    feed.querySelectorAll('[data-batch-id]').forEach(el=>{
+      el.addEventListener('click', ()=> openBatchModal(el.dataset.batchId, state.movements));
+    });
   }
 }
 
@@ -1015,32 +1034,89 @@ document.getElementById('btnToggleArchived').addEventListener('click', ()=>{
 });
 
 /* ---------- Render: Movements ---------- */
-function movementRow(m, short){
-  const w = wineById(m.wineId);
-  const typeBadge = m.type==='move' ? `<span class="badge gray">Transfer</span>`
-    : m.type==='received' ? `<span class="badge green">Received</span>`
-    : m.type==='remove' ? `<span class="badge red">Sold / removed</span>`
+function typeBadgeFor(type){
+  return type==='move' ? `<span class="badge gray">Transfer</span>`
+    : type==='received' ? `<span class="badge green">Received</span>`
+    : type==='remove' ? `<span class="badge red">Sold / removed</span>`
     : `<span class="badge amber">Tasting</span>`;
-  const route = m.type==='move' ? `${locLabel(m.from)} → ${locLabel(m.to)}` : locLabel(m.location);
-  const emailBadge = m.emailStatus==='sent' ? '<span class="badge green">✓ Sent</span>' :
-    m.emailStatus==='failed' ? '<span class="badge red">✕ Failed</span>' :
-    m.emailStatus==='not_configured' ? '<span class="badge gray">Not configured</span>' :
+}
+function emailBadgeFor(status){
+  return status==='sent' ? '<span class="badge green">✓ Sent</span>' :
+    status==='failed' ? '<span class="badge red">✕ Failed</span>' :
+    status==='not_configured' ? '<span class="badge gray">Not configured</span>' :
     '<span class="badge gray">—</span>';
-  if(short){
-    return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${typeBadge}</td><td>${m.qty}</td><td>${route}</td><td>${emailBadge}</td></tr>`;
-  }
-  const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
-  const refCell = m.type==='received' ? (m.supplier||m.reference ? `<span class="mono" style="font-size:11px;">${esc(m.supplier||'')}${m.supplier&&m.reference?' · ':''}${esc(m.reference||'')}</span>` : '—')
-    : (inv ? `<span class="mono">${esc(inv.number||'—')}</span>` : '—');
-  return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${typeBadge}</td><td>${m.qty}</td><td>${route}</td>
-    <td>${refCell}</td><td>${emailBadge}</td>
-    <td class="row-actions" style="white-space:nowrap;"><button class="btn ghost small" data-edit-move="${m.id}">Edit</button> <button class="btn ghost small" data-delete-move="${m.id}" style="color:var(--red);">Delete</button></td></tr>`;
 }
 function locLabel(key){ const l = LOCATIONS.find(l=>l.key===key); return l?l.label:key; }
 
-function wireMovementRowActions(container){
-  container.querySelectorAll('[data-edit-move]').forEach(b=>b.addEventListener('click', ()=>openEditMoveModal(b.dataset.editMove)));
-  container.querySelectorAll('[data-delete-move]').forEach(b=>b.addEventListener('click', ()=>deleteMovement(b.dataset.deleteMove)));
+function computeBatches(movementsList){
+  const map = {};
+  const order = [];
+  movementsList.forEach(m=>{
+    const key = m.batchId || m.id; // movements logged before batching existed each stand alone
+    if(!map[key]){
+      map[key] = {batchId:key, type:m.type, date:m.date, createdAt:m.createdAt, movements:[],
+        emailStatus:m.emailStatus, from:m.from, to:m.to, location:m.location,
+        invoiceId:m.invoiceId, contact:m.contact, supplier:m.supplier, reference:m.reference};
+      order.push(key);
+    }
+    map[key].movements.push(m);
+  });
+  return order.map(k=>map[k]);
+}
+function batchRow(b){
+  const route = b.type==='move' ? `${locLabel(b.from)} → ${locLabel(b.to)}` : locLabel(b.location);
+  const totalQty = b.movements.reduce((s,m)=>s+m.qty,0);
+  const wineCount = b.movements.length;
+  const wineSummary = wineCount===1 ? (wineById(b.movements[0].wineId)?.name || '—') : `${wineCount} wines`;
+  const inv = b.invoiceId ? invoicesIndex.find(i=>i.id===b.invoiceId) : null;
+  const refCell = b.type==='received' ? (b.supplier||b.reference ? `<span class="mono" style="font-size:11px;">${esc(b.supplier||'')}${b.supplier&&b.reference?' · ':''}${esc(b.reference||'')}</span>` : '—')
+    : b.type==='tasting' ? (b.contact ? esc(b.contact) : '—')
+    : (inv ? `<span class="mono">${esc(inv.number||'—')}</span>` : '—');
+  return `<tr class="clickable-row" data-batch-id="${esc(b.batchId)}" style="cursor:pointer;">
+    <td>${fmtDate(b.date)}</td><td>${esc(wineSummary)}</td><td>${typeBadgeFor(b.type)}</td><td>${totalQty}</td><td>${route}</td>
+    <td>${refCell}</td><td>${emailBadgeFor(b.emailStatus)}</td><td style="color:var(--ink-faint);">${wineCount} wine${wineCount===1?'':'s'} ›</td></tr>`;
+}
+function wireBatchRowActions(container, sourceMovements){
+  container.querySelectorAll('[data-batch-id]').forEach(tr=>{
+    tr.addEventListener('click', ()=> openBatchModal(tr.dataset.batchId, sourceMovements));
+  });
+}
+function openBatchModal(batchId, sourceMovements){
+  const batches = computeBatches(sourceMovements || state.movements);
+  const b = batches.find(x=>x.batchId===batchId);
+  if(!b) return;
+  const typeLabel = b.type==='move' ? 'Transfer' : b.type==='received' ? 'Stock received' : b.type==='remove' ? 'Sold / removed' : 'Tasting';
+  const route = b.type==='move' ? `${locLabel(b.from)} → ${locLabel(b.to)}` : locLabel(b.location);
+  document.getElementById('batchModalTitle').textContent = `${typeLabel} — ${fmtDate(b.date)}`;
+  const parts = [route];
+  if(b.type==='remove'){
+    const inv = b.invoiceId ? invoicesIndex.find(i=>i.id===b.invoiceId) : null;
+    if(inv && (inv.number||inv.customer)) parts.push([inv.number, inv.customer].filter(Boolean).join(' · '));
+  }
+  if(b.type==='tasting' && b.contact) parts.push(`For: ${b.contact}`);
+  if(b.type==='received' && (b.supplier||b.reference)) parts.push([b.supplier,b.reference].filter(Boolean).join(' · '));
+  const emailLabel = b.emailStatus==='sent' ? '✓ Alert sent' : b.emailStatus==='failed' ? '✕ Alert failed' : b.emailStatus==='not_configured' ? 'Alert not configured' : '';
+  if(emailLabel) parts.push(emailLabel);
+  document.getElementById('batchModalSubtitle').textContent = parts.join(' · ');
+
+  const body = document.getElementById('batchModalBody');
+  const rows = [...b.movements].sort((x,y)=> (wineById(x.wineId)?.name||'').localeCompare(wineById(y.wineId)?.name||''));
+  body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Wine</th><th>Qty</th><th>Note</th><th></th></tr></thead><tbody>
+    ${rows.map(m=>{
+      const w = wineById(m.wineId);
+      return `<tr><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td><td style="font-size:12px;color:var(--ink-soft);">${esc(m.note||'—')}</td>
+        <td style="white-space:nowrap;"><button class="btn ghost small" data-modal-edit-move="${m.id}">Edit</button> <button class="btn ghost small" data-modal-delete-move="${m.id}" style="color:var(--red);">Delete</button></td></tr>`;
+    }).join('')}
+  </tbody></table></div>`;
+  body.querySelectorAll('[data-modal-edit-move]').forEach(bt=>bt.addEventListener('click', ()=>{
+    closeModal('batchModalBackdrop');
+    openEditMoveModal(bt.dataset.modalEditMove);
+  }));
+  body.querySelectorAll('[data-modal-delete-move]').forEach(bt=>bt.addEventListener('click', ()=>{
+    closeModal('batchModalBackdrop');
+    deleteMovement(bt.dataset.modalDeleteMove);
+  }));
+  document.getElementById('batchModalBackdrop').classList.add('open');
 }
 
 function applyWineSearchDateFilter(rows, searchId, fromId, toId){
@@ -1060,11 +1136,12 @@ function applyWineSearchDateFilter(rows, searchId, fromId, toId){
 }
 function renderMovements(){
   const body = document.getElementById('movementsBody');
-  let rows = [...state.movements].sort((a,b)=>b.createdAt-a.createdAt);
+  let rows = [...state.movements];
   rows = applyWineSearchDateFilter(rows, 'movementSearch', 'movementDateFrom', 'movementDateTo');
-  body.innerHTML = rows.length ? rows.map(m=>movementRow(m,false)).join('') :
+  const batches = computeBatches(rows).sort((a,b)=>b.createdAt-a.createdAt);
+  body.innerHTML = batches.length ? batches.map(b=>batchRow(b)).join('') :
     `<tr class="empty-row"><td colspan="8">No movements match your filters.</td></tr>`;
-  wireMovementRowActions(body);
+  wireBatchRowActions(body, rows);
 }
 document.getElementById('movementSearch').addEventListener('input', renderMovements);
 document.getElementById('movementDateFrom').addEventListener('change', renderMovements);
@@ -2008,10 +2085,10 @@ function renderDepletedDetail(filter){
   if(filter==='sold') rows = rows.filter(m=>m.type==='remove');
   if(filter==='tasting') rows = rows.filter(m=>m.type==='tasting');
   rows = applyWineSearchDateFilter(rows, 'depletedSearch', 'depletedDateFrom', 'depletedDateTo');
-  rows = rows.sort((a,b)=>b.createdAt-a.createdAt);
-  body.innerHTML = rows.length ? rows.map(m=>movementRow(m,false)).join('') :
+  const batches = computeBatches(rows).sort((a,b)=>b.createdAt-a.createdAt);
+  body.innerHTML = batches.length ? batches.map(b=>batchRow(b)).join('') :
     `<tr class="empty-row"><td colspan="8">No records match your filters.</td></tr>`;
-  wireMovementRowActions(body);
+  wireBatchRowActions(body, rows);
   document.querySelectorAll('#depletedFilterBtns button').forEach(b=>b.classList.toggle('active', b.dataset.filter===filter));
 }
 document.getElementById('depletedFilterBtns').addEventListener('click', e=>{
