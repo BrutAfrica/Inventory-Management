@@ -508,10 +508,17 @@
           <button class="btn" id="btnSaveSettings">Save settings</button>
         </div>
       </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Full backup</h3></div>
+        <div class="panel-body">
+          <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">Downloads everything — your full wine list, every movement, and every invoice record — as one file. Nothing gets deleted from the app; this is just a safety copy. Worth doing every so often, and especially before using Reset below.</p>
+          <button class="btn secondary" id="btnFullBackup">⬇ Download full backup</button>
+        </div>
+      </div>
       <div class="panel" style="border-color:#E0AFAF;">
         <div class="panel-head" style="border-color:#F0D9D9;"><h3 style="color:var(--red);">⚠ Danger zone</h3></div>
         <div class="panel-body">
-          <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">Wipes every movement, invoice, and export record, and puts every wine's current stock entirely into Bonded Warehousing (Karen and Westlands reset to 0). Your wine list itself is kept. This affects the shared data for your whole team and can't be undone.</p>
+          <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">Wipes every movement, invoice, and export record, and puts every wine's current stock entirely into Bonded Warehousing (Karen and Westlands reset to 0). Your wine list itself is kept. This affects the shared data for your whole team and can't be undone. A full backup downloads automatically before this runs.</p>
           <button class="btn secondary" id="btnOpenReset" style="border-color:var(--red);color:var(--red);">Reset & start fresh</button>
         </div>
       </div>
@@ -1130,12 +1137,16 @@ async function archiveWine(id){
     ? `Archive "${w.name}"? It still shows ${total} bottle(s) in stock — archiving hides it from your active list but keeps all its history and stock numbers intact. You can bring it back anytime.`
     : `Archive "${w.name}"? It'll be hidden from your active list but you can bring it back anytime.`;
   if(!confirm(msg)) return;
-  w.archived = true;
+  if(db) await reloadFromCloud();
+  const freshW = wineById(id);
+  if(!freshW) return;
+  freshW.archived = true;
   await saveJSON(STATE_KEY, state, true);
   renderAll();
   toast('Wine archived', 'success');
 }
 async function unarchiveWine(id){
+  if(db) await reloadFromCloud();
   const w = wineById(id);
   if(!w) return;
   delete w.archived;
@@ -1159,9 +1170,13 @@ document.getElementById('btnSaveWine').addEventListener('click', async ()=>{
       westlands: Math.max(0, parseInt(document.getElementById('wineWestlands').value||0)),
     }
   };
+  // Refresh from the shared cloud first — someone else may have added or edited
+  // a wine moments ago, and saving over stale local data is how entries get lost.
+  if(db) await reloadFromCloud();
   if(id){
     const w = wineById(id);
-    Object.assign(w, data);
+    if(w) Object.assign(w, data);
+    else state.wines.push({id, ...data}); // was deleted/archived elsewhere mid-edit — re-add rather than lose the edit
   } else {
     state.wines.push({id: uid(), ...data});
   }
@@ -1667,6 +1682,29 @@ document.getElementById('btnSaveSettings').addEventListener('click', async ()=>{
   toast('Settings saved', 'success');
 });
 
+/* ---------- Full backup ---------- */
+async function downloadFullBackup(){
+  if(db) await reloadFromCloud();
+  const backup = {
+    exportedAt: new Date().toISOString(),
+    businessName: state.businessName,
+    wines: state.wines,
+    movements: state.movements,
+    invoices: invoicesIndex
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Brut-Africa-Backup-${todayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('btnFullBackup').addEventListener('click', async ()=>{
+  await downloadFullBackup();
+  toast('Backup downloaded', 'success');
+});
+
 /* ---------- Reset & Start Fresh ---------- */
 document.getElementById('btnOpenReset').addEventListener('click', ()=>{
   document.getElementById('resetConfirmInput').value = '';
@@ -1680,9 +1718,10 @@ document.getElementById('btnConfirmReset').addEventListener('click', async ()=>{
   if(document.getElementById('resetConfirmInput').value.trim() !== 'RESET') return;
   const btn = document.getElementById('btnConfirmReset');
   btn.disabled = true;
-  btn.textContent = 'Resetting…';
+  btn.textContent = 'Backing up…';
   try{
-    if(db) await reloadFromCloud();
+    await downloadFullBackup(); // safety net — also refreshes from cloud
+    btn.textContent = 'Resetting…';
     state.wines.forEach(w=>{
       const total = totalStock(w);
       w.stock = {bonded: total, karen: 0, westlands: 0};
