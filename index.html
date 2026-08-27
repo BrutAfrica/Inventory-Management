@@ -1309,10 +1309,11 @@ async function saveMovementInner(){
   const tastingContact = document.getElementById('tastingContact').value.trim();
   const receivedSupplier = document.getElementById('receivedSupplier').value.trim();
   const receivedReference = document.getElementById('receivedReference').value.trim();
+  const batchId = uid();
   const newMovements = [];
   for(const line of lines){
     const w = line.wine;
-    const movement = {id: uid(), wineId:w.id, type, qty:line.qty, date, note: note ? `${note} (${line.unitLabel})` : line.unitLabel, createdAt: Date.now(), emailStatus:'pending'};
+    const movement = {id: uid(), batchId, wineId:w.id, type, qty:line.qty, date, note: note ? `${note} (${line.unitLabel})` : line.unitLabel, createdAt: Date.now(), emailStatus:'pending'};
     if(type==='move'){
       w.stock[from] -= line.qty; w.stock[to] += line.qty;
       movement.from = from; movement.to = to;
@@ -1818,32 +1819,37 @@ function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'
 /* ---------- Render: Depleted (Sold & Tasted) ---------- */
 let depletedFilter = 'all';
 function computeCustomerGroups(){
-  const groups = {}; // lowercase key -> {name, movements:[]}
-  function addTo(rawName, m){
-    const name = rawName.trim();
-    const key = name.toLowerCase();
-    if(!groups[key]) groups[key] = {name, movements: []};
-    groups[key].movements.push(m);
-  }
+  const groups = {}; // key -> {name, movements:[], isFallback}
   state.movements.forEach(m=>{
     if(m.type==='remove'){
       const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
-      const custName = (inv && inv.customer && inv.customer.trim()) || 'No customer recorded';
-      addTo(custName, m);
+      const rawName = (inv && inv.customer) ? inv.customer.trim() : '';
+      const isFallback = !rawName;
+      const name = rawName || 'No customer recorded';
+      const key = 'cust:' + name.toLowerCase();
+      if(!groups[key]) groups[key] = {name, movements: [], isFallback};
+      groups[key].movements.push(m);
     } else if(m.type==='tasting'){
-      const custName = (m.contact && m.contact.trim()) || 'Tasting — unspecified';
-      addTo(custName, m);
+      // Each tasting event (everything logged together in one "Log movement" submission)
+      // is its own row — even if the same customer tastes on a different day.
+      const rawContact = (m.contact || '').trim();
+      const isFallback = !rawContact;
+      const contactLabel = rawContact || 'Tasting — unspecified';
+      const batchKey = m.batchId || m.id; // legacy entries without a batchId each stand alone
+      const key = 'tasting:' + batchKey;
+      const name = `${contactLabel} — ${fmtDate(m.date)}`;
+      if(!groups[key]) groups[key] = {name, movements: [], isFallback};
+      groups[key].movements.push(m);
     }
   });
   return groups;
 }
-const UNASSIGNED_GROUP_NAMES = ['no customer recorded', 'tasting — unspecified'];
 function renderDepleted(){
   const groups = computeCustomerGroups();
   const body = document.getElementById('depletedCustomerBody');
   const entries = Object.entries(groups); // [key, group]
-  const named = entries.filter(([key])=>!UNASSIGNED_GROUP_NAMES.includes(key)).sort((a,b)=>a[1].name.localeCompare(b[1].name));
-  const fallback = entries.filter(([key])=>UNASSIGNED_GROUP_NAMES.includes(key)).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+  const named = entries.filter(([,g])=>!g.isFallback).sort((a,b)=>a[1].name.localeCompare(b[1].name));
+  const fallback = entries.filter(([,g])=>g.isFallback).sort((a,b)=>a[1].name.localeCompare(b[1].name));
   const ordered = [...named, ...fallback];
 
   body.innerHTML = ordered.length ? ordered.map(([key, g])=>{
@@ -1852,7 +1858,7 @@ function renderDepleted(){
     const lastDate = g.movements.reduce((max,m)=> m.date>max?m.date:max, '');
     const soldCount = g.movements.filter(m=>m.type==='remove').length;
     const tastingCount = g.movements.filter(m=>m.type==='tasting').length;
-    const badges = [soldCount ? `<span class="badge red">${soldCount} sold</span>` : '', tastingCount ? `<span class="badge amber">${tastingCount} tasting</span>` : ''].filter(Boolean).join(' ');
+    const badges = [soldCount ? `<span class="badge red">${soldCount} sold</span>` : '', tastingCount ? `<span class="badge amber">tasting</span>` : ''].filter(Boolean).join(' ');
     return `<tr class="clickable-row" data-group-key="${esc(key)}" style="cursor:pointer;">
       <td><div class="wine-name">${esc(g.name)}</div><div style="margin-top:3px;">${badges}</div></td>
       <td>${wineCount} wine${wineCount===1?'':'s'}</td>
