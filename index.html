@@ -306,9 +306,13 @@
     <section id="tab-dashboard" class="active">
       <div class="section-head">
         <div><h2>Cellar overview</h2><p>Live stock across all three locations</p></div>
-        <button class="btn" id="btnQuickMove">Log a movement</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn secondary" id="btnOpenRelease">🚚 Log a release</button>
+          <button class="btn" id="btnQuickMove">Log a movement</button>
+        </div>
       </div>
       <div class="cellar-row" id="binRow"></div>
+      <div id="lastReleaseCard" style="display:none;"></div>
       <div class="panel">
         <div class="panel-head"><h3>Recent activity</h3><button class="btn ghost small" data-goto="movements">View all →</button></div>
         <div class="panel-body" style="padding-top:4px;">
@@ -661,6 +665,37 @@
   </div>
 </div>
 
+<!-- Release Order Modal -->
+<div class="modal-backdrop" id="releaseModalBackdrop">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head"><h3>🚚 Log a release</h3><button class="modal-close" data-close="releaseModalBackdrop">&times;</button></div>
+    <div class="modal-body">
+      <div class="hint" style="margin-bottom:12px;">Releases stock out of Bonded Warehousing, by the carton. Enter the carton count for each wine on this release order — leave any wine at 0 to skip it. The running total below should match your release order paperwork before you submit.</div>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input id="releaseDate" type="date"></div>
+        <div class="field"><label>Release into</label>
+          <select id="releaseTo"><option value="karen">Karen Warehouse</option><option value="westlands">Westlands Office</option></select>
+        </div>
+      </div>
+      <div class="field"><label>Release order reference <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><input id="releaseReference" placeholder="e.g. RO-0142"></div>
+      <div class="table-scroll" style="margin-top:10px;">
+        <table>
+          <thead><tr><th>Wine</th><th style="width:110px;">Cartons</th><th style="width:90px;">Bottles</th></tr></thead>
+          <tbody id="releaseWinesBody"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:12px;padding:10px 14px;background:var(--surface-2);border-radius:8px;font-size:13.5px;display:flex;justify-content:space-between;">
+        <span>Running total</span>
+        <strong id="releaseRunningTotal">0 cartons · 0 bottles</strong>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" data-close="releaseModalBackdrop">Cancel</button>
+      <button class="btn" id="btnSubmitRelease">Log release</button>
+    </div>
+  </div>
+</div>
+
 <!-- Batch Detail Modal -->
 <div class="modal-backdrop" id="batchModalBackdrop">
   <div class="modal">
@@ -671,7 +706,18 @@
       </div>
       <button class="modal-close" data-close="batchModalBackdrop">&times;</button>
     </div>
-    <div class="modal-body" id="batchModalBody"></div>
+    <div class="modal-body">
+      <div id="batchModalWinesTable"></div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft);">
+        <label style="font-size:12.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:6px;">Add a wine you missed</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <select id="batchAddWine" style="flex:1;min-width:160px;"></select>
+          <input id="batchAddQty" type="number" min="1" value="1" style="width:75px;">
+          <select id="batchAddUnit" style="width:110px;"><option value="case" selected>Cases</option><option value="bottle">Bottles</option></select>
+          <button class="btn secondary small" id="btnBatchAddWine" type="button">+ Add</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -905,9 +951,9 @@ function renderDashboard(){
     feed.innerHTML = `<div class="empty-state" style="padding:24px 8px;"><p>No activity yet — log your first movement to get started.</p></div>`;
   } else {
     feed.innerHTML = recentBatches.map(b=>{
-      const icon = b.type==='move' ? '🔄' : b.type==='received' ? '📥' : b.type==='remove' ? '📦' : '🍷';
-      const iconClass = b.type==='move' ? 'move' : b.type==='received' ? 'received' : b.type==='remove' ? 'remove' : 'tasting';
-      const eventLabel = b.type==='move' ? 'Transfer' : b.type==='received' ? 'Received' : b.type==='remove' ? 'Sold / removed' : 'Tasting';
+      const icon = b.isRelease ? '🚚' : b.type==='move' ? '🔄' : b.type==='received' ? '📥' : b.type==='remove' ? '📦' : '🍷';
+      const iconClass = b.isRelease ? 'received' : b.type==='move' ? 'move' : b.type==='received' ? 'received' : b.type==='remove' ? 'remove' : 'tasting';
+      const eventLabel = b.isRelease ? 'Release' : b.type==='move' ? 'Transfer' : b.type==='received' ? 'Received' : b.type==='remove' ? 'Sold / removed' : 'Tasting';
       const route = b.type==='move' ? `${locLabel(b.from)} → ${locLabel(b.to)}` : locLabel(b.location);
       const alertBadge = b.emailStatus==='sent' ? '<span class="badge green">✓ Sent</span>' :
         b.emailStatus==='failed' ? '<span class="badge red">✕ Failed</span>' : '';
@@ -917,7 +963,7 @@ function renderDashboard(){
       return `<div class="activity-item clickable-row" data-batch-id="${esc(b.batchId)}" style="cursor:pointer;">
         <div class="activity-icon ${iconClass}">${icon}</div>
         <div class="activity-main">
-          <div class="activity-title">${esc(wineSummary)} <span class="badge gray">${eventLabel}</span> ${alertBadge}</div>
+          <div class="activity-title">${esc(wineSummary)} <span class="badge ${b.isRelease?'gold':'gray'}">${eventLabel}</span> ${alertBadge}</div>
           <div class="activity-sub">${totalQty} bottle${totalQty===1?'':'s'} · ${route} · ${fmtDate(b.date)}</div>
         </div>
       </div>`;
@@ -926,6 +972,7 @@ function renderDashboard(){
       el.addEventListener('click', ()=> openBatchModal(el.dataset.batchId, state.movements));
     });
   }
+  renderLastReleaseCard();
 }
 
 /* ---------- Location detail modal ---------- */
@@ -1034,7 +1081,8 @@ document.getElementById('btnToggleArchived').addEventListener('click', ()=>{
 });
 
 /* ---------- Render: Movements ---------- */
-function typeBadgeFor(type){
+function typeBadgeFor(type, isRelease){
+  if(isRelease) return `<span class="badge gold">Release</span>`;
   return type==='move' ? `<span class="badge gray">Transfer</span>`
     : type==='received' ? `<span class="badge green">Received</span>`
     : type==='remove' ? `<span class="badge red">Sold / removed</span>`
@@ -1056,7 +1104,8 @@ function computeBatches(movementsList){
     if(!map[key]){
       map[key] = {batchId:key, type:m.type, date:m.date, createdAt:m.createdAt, movements:[],
         emailStatus:m.emailStatus, from:m.from, to:m.to, location:m.location,
-        invoiceId:m.invoiceId, contact:m.contact, supplier:m.supplier, reference:m.reference};
+        invoiceId:m.invoiceId, contact:m.contact, supplier:m.supplier, reference:m.reference,
+        isRelease: !!m.isRelease, releaseReference: m.releaseReference || ''};
       order.push(key);
     }
     map[key].movements.push(m);
@@ -1073,7 +1122,7 @@ function batchRow(b){
     : b.type==='tasting' ? (b.contact ? esc(b.contact) : '—')
     : (inv ? `<span class="mono">${esc(inv.number||'—')}</span>` : '—');
   return `<tr class="clickable-row" data-batch-id="${esc(b.batchId)}" style="cursor:pointer;">
-    <td>${fmtDate(b.date)}</td><td>${esc(wineSummary)}</td><td>${typeBadgeFor(b.type)}</td><td>${totalQty}</td><td>${route}</td>
+    <td>${fmtDate(b.date)}</td><td>${esc(wineSummary)}</td><td>${typeBadgeFor(b.type, b.isRelease)}</td><td>${totalQty}</td><td>${route}</td>
     <td>${refCell}</td><td>${emailBadgeFor(b.emailStatus)}</td><td style="color:var(--ink-faint);">${wineCount} wine${wineCount===1?'':'s'} ›</td></tr>`;
 }
 function wireBatchRowActions(container, sourceMovements){
@@ -1081,11 +1130,13 @@ function wireBatchRowActions(container, sourceMovements){
     tr.addEventListener('click', ()=> openBatchModal(tr.dataset.batchId, sourceMovements));
   });
 }
+let currentBatchModalId = null;
 function openBatchModal(batchId, sourceMovements){
   const batches = computeBatches(sourceMovements || state.movements);
   const b = batches.find(x=>x.batchId===batchId);
   if(!b) return;
-  const typeLabel = b.type==='move' ? 'Transfer' : b.type==='received' ? 'Stock received' : b.type==='remove' ? 'Sold / removed' : 'Tasting';
+  currentBatchModalId = batchId;
+  const typeLabel = b.isRelease ? 'Release' : b.type==='move' ? 'Transfer' : b.type==='received' ? 'Stock received' : b.type==='remove' ? 'Sold / removed' : 'Tasting';
   const route = b.type==='move' ? `${locLabel(b.from)} → ${locLabel(b.to)}` : locLabel(b.location);
   document.getElementById('batchModalTitle').textContent = `${typeLabel} — ${fmtDate(b.date)}`;
   const parts = [route];
@@ -1099,25 +1150,91 @@ function openBatchModal(batchId, sourceMovements){
   if(emailLabel) parts.push(emailLabel);
   document.getElementById('batchModalSubtitle').textContent = parts.join(' · ');
 
-  const body = document.getElementById('batchModalBody');
+  const tableWrap = document.getElementById('batchModalWinesTable');
   const rows = [...b.movements].sort((x,y)=> (wineById(x.wineId)?.name||'').localeCompare(wineById(y.wineId)?.name||''));
-  body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Wine</th><th>Qty</th><th>Note</th><th></th></tr></thead><tbody>
+  tableWrap.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Wine</th><th>Qty</th><th>Note</th><th></th></tr></thead><tbody>
     ${rows.map(m=>{
       const w = wineById(m.wineId);
       return `<tr><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td><td style="font-size:12px;color:var(--ink-soft);">${esc(m.note||'—')}</td>
         <td style="white-space:nowrap;"><button class="btn ghost small" data-modal-edit-move="${m.id}">Edit</button> <button class="btn ghost small" data-modal-delete-move="${m.id}" style="color:var(--red);">Delete</button></td></tr>`;
     }).join('')}
   </tbody></table></div>`;
-  body.querySelectorAll('[data-modal-edit-move]').forEach(bt=>bt.addEventListener('click', ()=>{
+  tableWrap.querySelectorAll('[data-modal-edit-move]').forEach(bt=>bt.addEventListener('click', ()=>{
     closeModal('batchModalBackdrop');
     openEditMoveModal(bt.dataset.modalEditMove);
   }));
-  body.querySelectorAll('[data-modal-delete-move]').forEach(bt=>bt.addEventListener('click', ()=>{
-    closeModal('batchModalBackdrop');
-    deleteMovement(bt.dataset.modalDeleteMove);
+  tableWrap.querySelectorAll('[data-modal-delete-move]').forEach(bt=>bt.addEventListener('click', async ()=>{
+    await deleteMovement(bt.dataset.modalDeleteMove);
+    // stay in context: refresh this modal in place, or close if that was the last wine
+    const stillHasWines = state.movements.some(mv=>(mv.batchId||mv.id)===batchId);
+    if(stillHasWines) openBatchModal(batchId, state.movements);
+    else closeModal('batchModalBackdrop');
   }));
+
+  // Reset and populate the "add a wine you missed" form for this batch
+  document.getElementById('batchAddWine').innerHTML = wineOptionsHtml();
+  document.getElementById('batchAddQty').value = 1;
+  document.getElementById('batchAddUnit').value = 'case';
+
   document.getElementById('batchModalBackdrop').classList.add('open');
 }
+document.getElementById('btnBatchAddWine').addEventListener('click', async ()=>{
+  if(!currentBatchModalId) return;
+  const batchId = currentBatchModalId;
+  const btn = document.getElementById('btnBatchAddWine');
+  btn.disabled = true;
+  try{
+    if(db) await reloadFromCloud();
+    const freshB = computeBatches(state.movements).find(x=>x.batchId===batchId);
+    if(!freshB){ toast('This event no longer exists', 'error'); closeModal('batchModalBackdrop'); return; }
+
+    const wineId = document.getElementById('batchAddWine').value;
+    const w = wineById(wineId);
+    const rawQty = Math.max(1, parseInt(document.getElementById('batchAddQty').value||0));
+    const unit = document.getElementById('batchAddUnit').value;
+    const qty = unit==='case' ? rawQty*CASE_SIZE : rawQty;
+    if(!w){ toast('Choose a wine', 'error'); return; }
+
+    const movement = {id: uid(), batchId, wineId, type: freshB.type, date: freshB.date,
+      note: unit==='case' ? `${rawQty} case${rawQty===1?'':'s'} (added later)` : `${rawQty} bottle${rawQty===1?'':'s'} (added later)`,
+      createdAt: Date.now(), emailStatus:'pending'};
+    if(freshB.isRelease){ movement.isRelease = true; movement.releaseReference = freshB.releaseReference || ''; }
+
+    if(freshB.type==='move'){
+      if(w.stock[freshB.from] < qty){ toast(`Not enough stock of "${w.name}" at ${locLabel(freshB.from)} (have ${w.stock[freshB.from]}, need ${qty})`, 'error'); return; }
+      w.stock[freshB.from] -= qty; w.stock[freshB.to] += qty;
+      movement.from = freshB.from; movement.to = freshB.to;
+    } else if(freshB.type==='received'){
+      w.stock[freshB.location] += qty;
+      movement.location = freshB.location;
+      if(freshB.supplier) movement.supplier = freshB.supplier;
+      if(freshB.reference) movement.reference = freshB.reference;
+    } else {
+      if(w.stock[freshB.location] < qty){ toast(`Not enough stock of "${w.name}" at ${locLabel(freshB.location)} (have ${w.stock[freshB.location]}, need ${qty})`, 'error'); return; }
+      w.stock[freshB.location] -= qty;
+      movement.location = freshB.location;
+      if(freshB.type==='tasting' && freshB.contact) movement.contact = freshB.contact;
+      if(freshB.type==='remove' && freshB.invoiceId){
+        movement.invoiceId = freshB.invoiceId;
+        const inv = invoicesIndex.find(i=>i.id===freshB.invoiceId);
+        if(inv) inv.movementIds.push(movement.id);
+      }
+    }
+    state.movements.push(movement);
+    if(freshB.type==='remove' && freshB.invoiceId) await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
+    await saveJSON(STATE_KEY, state, true);
+
+    const result = await sendBatchAlertEmail([movement], 'Added after the fact to an earlier entry');
+    movement.emailStatus = result.status;
+    await saveJSON(STATE_KEY, state, true);
+
+    renderAll();
+    toast(`${w.name} added${result.status==='sent' ? ' · alert sent' : ''}`, 'success');
+    openBatchModal(batchId, state.movements);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 function applyWineSearchDateFilter(rows, searchId, fromId, toId){
   const search = (document.getElementById(searchId)?.value || '').trim().toLowerCase();
@@ -1310,6 +1427,123 @@ function refreshAllLineStocks(){
 document.getElementById('btnAddMoveLine').addEventListener('click', addMoveLine);
 
 document.getElementById('btnQuickMove').addEventListener('click', openMoveModal);
+
+/* ---------- Release Order ---------- */
+function updateReleaseRunningTotal(){
+  let cartons = 0, bottles = 0;
+  document.querySelectorAll('.release-carton-input').forEach(inp=>{
+    const c = Math.max(0, parseInt(inp.value||0));
+    cartons += c;
+    bottles += c * CASE_SIZE;
+  });
+  document.getElementById('releaseRunningTotal').textContent = `${cartons} carton${cartons===1?'':'s'} · ${bottles} bottle${bottles===1?'':'s'}`;
+}
+function openReleaseModal(){
+  const activeWines = state.wines.filter(w=>!w.archived).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!activeWines.length){ toast('Add a wine first', 'error'); return; }
+  document.getElementById('releaseDate').value = todayStr();
+  document.getElementById('releaseReference').value = '';
+  document.getElementById('releaseTo').value = 'karen';
+  const body = document.getElementById('releaseWinesBody');
+  body.innerHTML = activeWines.map(w=>`
+    <tr data-wine-id="${w.id}">
+      <td><div class="wine-name">${esc(w.name)}${w.vintage?` <span class="wine-sub">'${esc(w.vintage)}</span>`:''}</div><div class="wine-sub">Bonded: ${w.stock.bonded} bottles</div></td>
+      <td><input type="number" class="release-carton-input" min="0" value="0" style="width:80px;"></td>
+      <td class="release-bottle-preview" style="color:var(--ink-soft);">0</td>
+    </tr>
+  `).join('');
+  body.querySelectorAll('.release-carton-input').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const preview = inp.closest('tr').querySelector('.release-bottle-preview');
+      preview.textContent = Math.max(0, parseInt(inp.value||0)) * CASE_SIZE;
+      updateReleaseRunningTotal();
+    });
+  });
+  updateReleaseRunningTotal();
+  document.getElementById('releaseModalBackdrop').classList.add('open');
+}
+document.getElementById('btnOpenRelease').addEventListener('click', openReleaseModal);
+
+document.getElementById('btnSubmitRelease').addEventListener('click', async ()=>{
+  const btn = document.getElementById('btnSubmitRelease');
+  const date = document.getElementById('releaseDate').value || todayStr();
+  const to = document.getElementById('releaseTo').value;
+  const reference = document.getElementById('releaseReference').value.trim();
+
+  const lines = [];
+  document.querySelectorAll('#releaseWinesBody tr').forEach(tr=>{
+    const cartons = Math.max(0, parseInt(tr.querySelector('.release-carton-input').value||0));
+    if(cartons > 0) lines.push({wineId: tr.dataset.wineId, cartons, qty: cartons*CASE_SIZE});
+  });
+  if(!lines.length){ toast('Enter at least one carton quantity', 'error'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Checking stock…';
+  try{
+    if(db) await reloadFromCloud();
+    // Re-render the modal's per-wine "Bonded: X bottles" hints could now be stale, but validate against fresh truth regardless
+    for(const line of lines){
+      const w = wineById(line.wineId);
+      if(!w || w.stock.bonded < line.qty){
+        toast(`Not enough stock of "${w?w.name:'a wine'}" in Bonded (have ${w?w.stock.bonded:0}, need ${line.qty})`, 'error');
+        return;
+      }
+    }
+    const batchId = uid();
+    const newMovements = [];
+    for(const line of lines){
+      const w = wineById(line.wineId);
+      w.stock.bonded -= line.qty;
+      w.stock[to] += line.qty;
+      const movement = {id: uid(), batchId, wineId: w.id, type:'move', qty: line.qty,
+        date, note: reference ? `Release ${reference} — ${line.cartons} carton${line.cartons===1?'':'s'}` : `Release — ${line.cartons} carton${line.cartons===1?'':'s'}`,
+        from:'bonded', to, isRelease:true, releaseReference: reference || '', createdAt: Date.now(), emailStatus:'pending'};
+      state.movements.push(movement);
+      newMovements.push(movement);
+    }
+    btn.textContent = 'Sending alert email…';
+    const result = await sendBatchAlertEmail(newMovements, reference ? `Release order ${reference}` : 'Stock release from Bonded');
+    newMovements.forEach(m=>m.emailStatus = result.status);
+    await saveJSON(STATE_KEY, state, true);
+    closeModal('releaseModalBackdrop');
+    renderAll();
+    const totalCartons = lines.reduce((s,l)=>s+l.cartons,0);
+    const totalBottles = lines.reduce((s,l)=>s+l.qty,0);
+    toast(`Release logged — ${totalCartons} cartons · ${totalBottles} bottles`, 'success');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Log release';
+  }
+});
+
+function renderLastReleaseCard(){
+  const card = document.getElementById('lastReleaseCard');
+  const releaseBatches = computeBatches(state.movements.filter(m=>m.isRelease)).sort((a,b)=>b.createdAt-a.createdAt);
+  if(!releaseBatches.length){ card.style.display = 'none'; return; }
+  const b = releaseBatches[0];
+  const totalBottles = b.movements.reduce((s,m)=>s+m.qty,0);
+  const totalCartons = totalBottles / CASE_SIZE;
+  const rows = [...b.movements].sort((x,y)=>(wineById(x.wineId)?.name||'').localeCompare(wineById(y.wineId)?.name||''));
+  card.style.display = 'block';
+  card.innerHTML = `<div class="panel" style="border-color:var(--gold);">
+    <div class="panel-head">
+      <h3>🚚 Last release ${b.releaseReference?`— ${esc(b.releaseReference)}`:''}</h3>
+      <button class="btn ghost small" id="btnViewLastRelease">View / edit →</button>
+    </div>
+    <div class="panel-body">
+      <div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px;">${fmtDate(b.date)} · into ${locLabel(b.to)}</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:10px;">Total: ${totalCartons} carton${totalCartons===1?'':'s'} · ${totalBottles} bottle${totalBottles===1?'':'s'}</div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Wine</th><th>Cartons</th><th>Bottles</th></tr></thead>
+        <tbody>${rows.map(m=>{
+          const w = wineById(m.wineId);
+          return `<tr><td>${w?esc(w.name):'—'}</td><td>${m.qty/CASE_SIZE}</td><td>${m.qty}</td></tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+  document.getElementById('btnViewLastRelease').addEventListener('click', ()=> openBatchModal(b.batchId, state.movements));
+}
 document.getElementById('btnLogMovement').addEventListener('click', openMoveModal);
 function openMoveModal(){
   if(!state.wines.some(w=>!w.archived)){ toast('Add an active wine first (or unarchive one)', 'error'); return; }
