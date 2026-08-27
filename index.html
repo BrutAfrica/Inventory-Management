@@ -508,6 +508,13 @@
           <button class="btn" id="btnSaveSettings">Save settings</button>
         </div>
       </div>
+      <div class="panel" style="border-color:#E0AFAF;">
+        <div class="panel-head" style="border-color:#F0D9D9;"><h3 style="color:var(--red);">⚠ Danger zone</h3></div>
+        <div class="panel-body">
+          <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">Wipes every movement, invoice, and export record, and puts every wine's current stock entirely into Bonded Warehousing (Karen and Westlands reset to 0). Your wine list itself is kept. This affects the shared data for your whole team and can't be undone.</p>
+          <button class="btn secondary" id="btnOpenReset" style="border-color:var(--red);color:var(--red);">Reset & start fresh</button>
+        </div>
+      </div>
     </section>
   </main>
 
@@ -618,6 +625,32 @@
       <button class="modal-close" data-close="locationModalBackdrop">&times;</button>
     </div>
     <div class="modal-body" id="locationModalBody"></div>
+  </div>
+</div>
+
+<!-- Reset & Start Fresh Modal -->
+<div class="modal-backdrop" id="resetModalBackdrop">
+  <div class="modal">
+    <div class="modal-head"><h3 style="color:var(--red);">⚠ Reset & start fresh</h3><button class="modal-close" data-close="resetModalBackdrop">&times;</button></div>
+    <div class="modal-body">
+      <div class="note-box" style="background:var(--red-soft);border-color:#E0AFAF;color:#7A2626;">
+        This will, for your whole team, permanently:
+        <ul style="margin:8px 0 0;padding-left:18px;">
+          <li>Delete every movement (transfers, sales, tastings, receipts) and their history</li>
+          <li>Delete every invoice record</li>
+          <li>Set every wine's stock so its full current total sits in <strong>Bonded Warehousing</strong>, with Karen and Westlands both reset to 0</li>
+        </ul>
+        Your wine list (names, producers, SKUs) is kept. <strong>This cannot be undone.</strong>
+      </div>
+      <div class="field" style="margin-top:16px;">
+        <label>Type RESET to confirm</label>
+        <input id="resetConfirmInput" placeholder="RESET" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" data-close="resetModalBackdrop">Cancel</button>
+      <button class="btn" id="btnConfirmReset" disabled style="background:var(--red);">Reset everything</button>
+    </div>
   </div>
 </div>
 
@@ -1633,6 +1666,43 @@ document.getElementById('btnSaveSettings').addEventListener('click', async ()=>{
   renderSettings();
   toast('Settings saved', 'success');
 });
+
+/* ---------- Reset & Start Fresh ---------- */
+document.getElementById('btnOpenReset').addEventListener('click', ()=>{
+  document.getElementById('resetConfirmInput').value = '';
+  document.getElementById('btnConfirmReset').disabled = true;
+  document.getElementById('resetModalBackdrop').classList.add('open');
+});
+document.getElementById('resetConfirmInput').addEventListener('input', e=>{
+  document.getElementById('btnConfirmReset').disabled = e.target.value.trim() !== 'RESET';
+});
+document.getElementById('btnConfirmReset').addEventListener('click', async ()=>{
+  if(document.getElementById('resetConfirmInput').value.trim() !== 'RESET') return;
+  const btn = document.getElementById('btnConfirmReset');
+  btn.disabled = true;
+  btn.textContent = 'Resetting…';
+  try{
+    if(db) await reloadFromCloud();
+    state.wines.forEach(w=>{
+      const total = totalStock(w);
+      w.stock = {bonded: total, karen: 0, westlands: 0};
+    });
+    state.movements = [];
+    state.pendingExportMonth = '';
+    state.lastAutoNotifiedMonth = '';
+    invoicesIndex = [];
+    await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
+    await saveJSON(STATE_KEY, state, true);
+    closeModal('resetModalBackdrop');
+    renderAll();
+    toast('Everything reset — all stock is now in Bonded Warehousing', 'success');
+  }catch(e){
+    toast('Reset failed — check your connection and try again', 'error');
+  } finally {
+    btn.textContent = 'Reset everything';
+  }
+});
+
 document.getElementById('btnTestEmail').addEventListener('click', async ()=>{
   const fakeWine = {name:'Test Wine', vintage:'2024'};
   const fakeMove = {type:'remove', qty:1, location:'karen', date: todayStr(), note:'Test alert'};
