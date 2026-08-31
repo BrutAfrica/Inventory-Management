@@ -185,6 +185,10 @@
   .radio-card{border:1px solid var(--line);border-radius:8px;padding:10px 8px;text-align:center;font-size:12.5px;font-weight:600;color:var(--ink-soft);}
   .radio-card input{display:none;}
   .radio-card.active{border-color:var(--wine);background:var(--wine-soft);color:var(--wine-dark);}
+  .radio-card.detailed{text-align:left;padding:11px 12px;}
+  .radio-card.detailed .rc-title{display:block;font-size:13px;font-weight:700;}
+  .radio-card.detailed .rc-caption{display:block;font-size:11px;font-weight:400;color:var(--ink-faint);margin-top:2px;line-height:1.35;}
+  .radio-card.detailed.active .rc-caption{color:var(--wine-dark);opacity:.75;}
 
   .stock-strip{display:flex;gap:14px;font-size:12px;color:var(--ink-soft);margin-top:6px;flex-wrap:wrap;}
   .stock-strip b{color:var(--ink);}
@@ -281,7 +285,10 @@
         <h1 id="bizName">Brut Africa</h1>
       </div>
     </div>
-    <div style="font-size:12px;color:var(--ink-soft);" id="lastSaved">—</div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="btn ghost small" id="btnOpenHelp" style="border:1px solid var(--line);border-radius:999px;width:30px;height:30px;padding:0;font-weight:700;">?</button>
+      <div style="font-size:12px;color:var(--ink-soft);" id="lastSaved">—</div>
+    </div>
   </div>
 
   <div id="cloudBanner" style="display:none;background:var(--amber-soft);color:#5F4A17;border:1px solid #E4C079;border-radius:8px;padding:10px 16px;margin-top:16px;font-size:12.5px;">
@@ -292,13 +299,13 @@
   </div>
 
   <nav class="tabs" id="tabs">
-    <button data-tab="dashboard" class="active">Dashboard</button>
-    <button data-tab="wines">Wines</button>
-    <button data-tab="movements">Movements &amp; Alerts</button>
-    <button data-tab="invoices">Invoices</button>
-    <button data-tab="depleted">Sold &amp; Tasted</button>
-    <button data-tab="export">Monthly Export</button>
-    <button data-tab="settings">Settings</button>
+    <button data-tab="dashboard" class="active">🏠 Dashboard</button>
+    <button data-tab="wines">🍷 Wines</button>
+    <button data-tab="movements">📋 Activity Log</button>
+    <button data-tab="invoices">🧾 Invoices</button>
+    <button data-tab="depleted">👥 Customers</button>
+    <button data-tab="export">📊 Export</button>
+    <button data-tab="settings">⚙️ Settings</button>
   </nav>
 
   <main>
@@ -355,7 +362,7 @@
     <!-- MOVEMENTS -->
     <section id="tab-movements">
       <div class="section-head">
-        <div><h2>Movements &amp; alerts</h2><p>Every move, sale, and tasting pour — with automatic email status</p></div>
+        <div><h2>📋 Activity log</h2><p>Every move, sale, receipt, and tasting pour — tap any row to see the details</p></div>
         <button class="btn" id="btnLogMovement">+ Log movement</button>
       </div>
       <div class="panel">
@@ -394,7 +401,7 @@
     <!-- DEPLETED (SOLD & TASTED) -->
     <section id="tab-depleted">
       <div class="section-head">
-        <div><h2>Sold &amp; tasted</h2><p>Tap a customer (or Tastings) to see exactly what they took</p></div>
+        <div><h2>👥 Customers</h2><p>Everyone you've sold to or hosted a tasting for — tap a name to see exactly what they took</p></div>
       </div>
       <div class="panel">
         <div class="panel-head"><h3>By customer</h3></div>
@@ -576,11 +583,11 @@
     <div class="modal-body">
       <div class="field">
         <label>Event type</label>
-        <div class="radio-cards" id="moveTypeCards" style="grid-template-columns:repeat(2,1fr);">
-          <label class="radio-card active" data-type="move"><input type="radio" name="moveType" value="move" checked>Transfer between locations</label>
-          <label class="radio-card" data-type="received"><input type="radio" name="moveType" value="received">Stock received (new shipment)</label>
-          <label class="radio-card" data-type="remove"><input type="radio" name="moveType" value="remove">Sold / removed to customer</label>
-          <label class="radio-card" data-type="tasting"><input type="radio" name="moveType" value="tasting">Used in tasting</label>
+        <div class="radio-cards detailed-group" id="moveTypeCards" style="grid-template-columns:repeat(2,1fr);">
+          <label class="radio-card detailed active" data-type="move"><input type="radio" name="moveType" value="move" checked><span class="rc-title">🔄 Transfer</span><span class="rc-caption">Moving stock between your own Bonded/Karen/Westlands locations</span></label>
+          <label class="radio-card detailed" data-type="received"><input type="radio" name="moveType" value="received"><span class="rc-title">📥 Received</span><span class="rc-caption">A new shipment just arrived from a supplier</span></label>
+          <label class="radio-card detailed" data-type="remove"><input type="radio" name="moveType" value="remove"><span class="rc-title">📦 Sold</span><span class="rc-caption">Wine leaving for good — going to a customer</span></label>
+          <label class="radio-card detailed" data-type="tasting"><input type="radio" name="moveType" value="tasting"><span class="rc-title">🍷 Tasting</span><span class="rc-caption">Wine poured or opened for a tasting, not sold</span></label>
         </div>
       </div>
       <div class="field-row" id="fromToRow">
@@ -665,6 +672,52 @@
     <div class="modal-foot">
       <button class="btn secondary" data-close="resetModalBackdrop">Cancel</button>
       <button class="btn" id="btnConfirmReset" disabled style="background:var(--red);">Reset everything</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help Modal -->
+<div class="modal-backdrop" id="helpModalBackdrop">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head"><h3>How this app works</h3><button class="modal-close" data-close="helpModalBackdrop">&times;</button></div>
+    <div class="modal-body">
+      <div style="margin-bottom:18px;">
+        <h4 style="margin:0 0 6px;font-size:14px;">The basic idea</h4>
+        <p style="margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.6;">This app tracks how many bottles of each wine you have, and where. Every time stock moves — a shipment arrives, wine gets sold, wine goes for a tasting, or you shift stock between your own locations — you log it once, and every screen updates from that same record.</p>
+      </div>
+      <div style="margin-bottom:18px;">
+        <h4 style="margin:0 0 6px;font-size:14px;">Your three locations</h4>
+        <ul style="margin:0;padding-left:18px;font-size:13.5px;color:var(--ink-soft);line-height:1.7;">
+          <li><strong>Bonded Warehousing</strong> — where most stock sits before duty is paid</li>
+          <li><strong>Karen Warehouse</strong> — staging, before wine goes out to a customer</li>
+          <li><strong>Westlands Office</strong> — small quantities kept for tastings</li>
+        </ul>
+      </div>
+      <div style="margin-bottom:18px;">
+        <h4 style="margin:0 0 6px;font-size:14px;">What each tab is for</h4>
+        <ul style="margin:0;padding-left:18px;font-size:13.5px;color:var(--ink-soft);line-height:1.85;">
+          <li><strong>🏠 Dashboard</strong> — the big picture: stock per location, your last release, sales totals, and recent activity</li>
+          <li><strong>🍷 Wines</strong> — your master wine list, and where you add or archive a wine</li>
+          <li><strong>📋 Activity Log</strong> — every single thing that's ever been logged, searchable and filterable</li>
+          <li><strong>🧾 Invoices</strong> — the invoices you've attached to sales</li>
+          <li><strong>👥 Customers</strong> — everyone you've sold to or hosted for a tasting, grouped by name</li>
+          <li><strong>📊 Export</strong> — the monthly Excel file for Zoho</li>
+          <li><strong>⚙️ Settings</strong> — email alerts, shared storage, and backups</li>
+        </ul>
+      </div>
+      <div style="margin-bottom:6px;">
+        <h4 style="margin:0 0 6px;font-size:14px;">The four things you can log</h4>
+        <ul style="margin:0;padding-left:18px;font-size:13.5px;color:var(--ink-soft);line-height:1.7;">
+          <li><strong>🔄 Transfer</strong> — moving stock between your own locations</li>
+          <li><strong>📥 Received</strong> — a new shipment arriving</li>
+          <li><strong>📦 Sold</strong> — wine gone for good, to a customer</li>
+          <li><strong>🍷 Tasting</strong> — wine opened for a tasting, not sold</li>
+        </ul>
+        <p style="margin:8px 0 0;font-size:13px;color:var(--ink-soft);">🚚 A <strong>Release</strong> (on the Dashboard) is just a Transfer out of Bonded, done by the carton — it's the same underlying thing, shown with your own paperwork's numbers.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="helpModalBackdrop">Got it</button>
     </div>
   </div>
 </div>
@@ -1545,23 +1598,14 @@ function renderLastReleaseCard(){
   const b = releaseBatches[0];
   const totalBottles = b.movements.reduce((s,m)=>s+m.qty,0);
   const totalCartons = totalBottles / CASE_SIZE;
-  const rows = [...b.movements].sort((x,y)=>(wineById(x.wineId)?.name||'').localeCompare(wineById(y.wineId)?.name||''));
   card.style.display = 'block';
   card.innerHTML = `<div class="panel" style="border-color:var(--gold);">
-    <div class="panel-head">
-      <h3>🚚 Last release ${b.releaseReference?`— ${esc(b.releaseReference)}`:''}</h3>
-      <button class="btn ghost small" id="btnViewLastRelease">View / edit →</button>
-    </div>
-    <div class="panel-body">
-      <div style="font-size:12px;color:var(--ink-soft);margin-bottom:6px;">${fmtDate(b.date)} · into ${locLabel(b.to)}</div>
-      <div style="font-size:14px;font-weight:600;margin-bottom:10px;">Total: ${totalCartons} carton${totalCartons===1?'':'s'} · ${totalBottles} bottle${totalBottles===1?'':'s'}</div>
-      <div class="table-scroll"><table>
-        <thead><tr><th>Wine</th><th>Cartons</th><th>Bottles</th></tr></thead>
-        <tbody>${rows.map(m=>{
-          const w = wineById(m.wineId);
-          return `<tr><td>${w?esc(w.name):'—'}</td><td>${m.qty/CASE_SIZE}</td><td>${m.qty}</td></tr>`;
-        }).join('')}</tbody>
-      </table></div>
+    <div class="panel-body" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:13px;font-weight:600;">🚚 Last release${b.releaseReference?` — ${esc(b.releaseReference)}`:''}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">${fmtDate(b.date)} · into ${locLabel(b.to)} · ${totalCartons} carton${totalCartons===1?'':'s'} (${totalBottles} bottles)</div>
+      </div>
+      <button class="btn secondary small" id="btnViewLastRelease">View details →</button>
     </div>
   </div>`;
   document.getElementById('btnViewLastRelease').addEventListener('click', ()=> openBatchModal(b.batchId, state.movements));
@@ -1636,20 +1680,28 @@ function renderSalesSummaryCard(){
       ${unpricedBottles>0 ? `<div style="margin-top:12px;font-size:12px;color:var(--ink-soft);">⚠ ${unpricedBottles} sold bottle${unpricedBottles===1?'':'s'} had no price recorded and ${unpricedBottles===1?"isn't":"aren't"} included in revenue above.</div>` : ''}
 
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line-soft);">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Breakdown by wine — all-time</div>
-        <div class="table-scroll"><table>
-          <thead><tr><th>Wine</th><th>Bottles</th><th>Cartons</th><th>Revenue</th></tr></thead>
-          <tbody>${wineRows.map(r=>`
-            <tr><td>${esc(r.wine.name)}</td><td>${r.qty}</td><td>${cartonLabel(r.qty)}</td><td>${r.revenue>0?formatKES(r.revenue):'—'}</td></tr>
-          `).join('')}</tbody>
-          <tfoot><tr style="font-weight:700;border-top:2px solid var(--line);">
-            <td>Total (check against your records)</td><td>${checkQty}</td><td>${cartonLabel(checkQty)}</td><td>${checkRevenue>0?formatKES(checkRevenue):'—'}</td>
-          </tr></tfoot>
-        </table></div>
+        <button class="btn ghost small" id="btnToggleSalesBreakdown" type="button">Show breakdown by wine ▾</button>
+        <div id="salesBreakdownWrap" style="display:none;margin-top:10px;">
+          <div class="table-scroll"><table>
+            <thead><tr><th>Wine</th><th>Bottles</th><th>Cartons</th><th>Revenue</th></tr></thead>
+            <tbody>${wineRows.map(r=>`
+              <tr><td>${esc(r.wine.name)}</td><td>${r.qty}</td><td>${cartonLabel(r.qty)}</td><td>${r.revenue>0?formatKES(r.revenue):'—'}</td></tr>
+            `).join('')}</tbody>
+            <tfoot><tr style="font-weight:700;border-top:2px solid var(--line);">
+              <td>Total (check against your records)</td><td>${checkQty}</td><td>${cartonLabel(checkQty)}</td><td>${checkRevenue>0?formatKES(checkRevenue):'—'}</td>
+            </tr></tfoot>
+          </table></div>
+        </div>
       </div>
     </div>
   </div>`;
   document.getElementById('salesSummaryCard').querySelector('[data-goto="depleted"]').addEventListener('click', ()=> goto('depleted'));
+  document.getElementById('btnToggleSalesBreakdown').addEventListener('click', function(){
+    const wrap = document.getElementById('salesBreakdownWrap');
+    const open = wrap.style.display !== 'none';
+    wrap.style.display = open ? 'none' : 'block';
+    this.textContent = open ? 'Show breakdown by wine ▾' : 'Hide breakdown by wine ▴';
+  });
 }
 
 document.getElementById('btnLogMovement').addEventListener('click', openMoveModal);
@@ -2479,6 +2531,7 @@ function renderAll(){
   renderSettings();
   updateExportBanners();
 }
+document.getElementById('btnOpenHelp').addEventListener('click', ()=> document.getElementById('helpModalBackdrop').classList.add('open'));
 
 /* ---------- Init ---------- */
 async function init(){
