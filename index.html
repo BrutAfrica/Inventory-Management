@@ -313,6 +313,7 @@
       </div>
       <div class="cellar-row" id="binRow"></div>
       <div id="lastReleaseCard" style="display:none;"></div>
+      <div id="salesSummaryCard" style="display:none;"></div>
       <div class="panel">
         <div class="panel-head"><h3>Recent activity</h3><button class="btn ghost small" data-goto="movements">View all →</button></div>
         <div class="panel-body" style="padding-top:4px;">
@@ -399,7 +400,7 @@
         <div class="panel-head"><h3>By customer</h3></div>
         <div class="panel-body">
           <div class="table-scroll"><table>
-            <thead><tr><th>Customer</th><th>Wines</th><th>Bottles</th><th>Last activity</th></tr></thead>
+            <thead><tr><th>Customer</th><th>Wines</th><th>Bottles</th><th>Revenue</th><th>Last activity</th></tr></thead>
             <tbody id="depletedCustomerBody"></tbody>
           </table></div>
         </div>
@@ -556,6 +557,9 @@
         <div class="field"><label>Karen Warehouse qty</label><input id="wineKaren" type="number" min="0" value="0"></div>
       </div>
       <div class="field"><label>Westlands Office qty</label><input id="wineWestlands" type="number" min="0" value="0"></div>
+      <div class="field"><label>Default selling price per bottle (KES) <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><input id="winePrice" type="number" min="0" step="0.01" placeholder="e.g. 2500">
+        <div class="hint">Pre-fills the price when you log a sale — you can still adjust it per sale.</div>
+      </div>
       <div class="field"><label>Notes</label><textarea id="wineNotes" placeholder="Optional"></textarea></div>
     </div>
     <div class="modal-foot">
@@ -768,6 +772,7 @@
       </div>
       <div class="field"><label>Note</label><input id="editMoveNote" placeholder="Optional"></div>
       <div class="field" id="editTastingContactField" style="display:none;"><label>Customer / Company / Person</label><input id="editTastingContact" placeholder="Who was this tasting for?"></div>
+      <div class="field" id="editPriceField" style="display:none;"><label>Price per bottle (KES)</label><input id="editUnitPrice" type="number" min="0" step="0.01" placeholder="0.00"></div>
       <div class="field-row" id="editReceivedFields" style="display:none;">
         <div class="field"><label>Supplier</label><input id="editReceivedSupplier" placeholder="e.g. Domaine des Loges"></div>
         <div class="field"><label>Reference / PO number</label><input id="editReceivedReference" placeholder="e.g. Shipment ref"></div>
@@ -973,6 +978,7 @@ function renderDashboard(){
     });
   }
   renderLastReleaseCard();
+  renderSalesSummaryCard();
 }
 
 /* ---------- Location detail modal ---------- */
@@ -1143,6 +1149,8 @@ function openBatchModal(batchId, sourceMovements){
   if(b.type==='remove'){
     const inv = b.invoiceId ? invoicesIndex.find(i=>i.id===b.invoiceId) : null;
     if(inv && (inv.number||inv.customer)) parts.push([inv.number, inv.customer].filter(Boolean).join(' · '));
+    const revenue = b.movements.reduce((s,m)=>s+(m.lineTotal||0),0);
+    if(revenue>0) parts.push(formatKES(revenue));
   }
   if(b.type==='tasting' && b.contact) parts.push(`For: ${b.contact}`);
   if(b.type==='received' && (b.supplier||b.reference)) parts.push([b.supplier,b.reference].filter(Boolean).join(' · '));
@@ -1152,10 +1160,12 @@ function openBatchModal(batchId, sourceMovements){
 
   const tableWrap = document.getElementById('batchModalWinesTable');
   const rows = [...b.movements].sort((x,y)=> (wineById(x.wineId)?.name||'').localeCompare(wineById(y.wineId)?.name||''));
-  tableWrap.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Wine</th><th>Qty</th><th>Note</th><th></th></tr></thead><tbody>
+  const priceCols = b.type==='remove' ? '<th>Price</th><th>Total</th>' : '';
+  tableWrap.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Wine</th><th>Qty</th>${priceCols}<th>Note</th><th></th></tr></thead><tbody>
     ${rows.map(m=>{
       const w = wineById(m.wineId);
-      return `<tr><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td><td style="font-size:12px;color:var(--ink-soft);">${esc(m.note||'—')}</td>
+      const priceCells = b.type==='remove' ? `<td>${m.unitPrice?formatKES(m.unitPrice):'—'}</td><td>${m.lineTotal?formatKES(m.lineTotal):'—'}</td>` : '';
+      return `<tr><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td>${priceCells}<td style="font-size:12px;color:var(--ink-soft);">${esc(m.note||'—')}</td>
         <td style="white-space:nowrap;"><button class="btn ghost small" data-modal-edit-move="${m.id}">Edit</button> <button class="btn ghost small" data-modal-delete-move="${m.id}" style="color:var(--red);">Delete</button></td></tr>`;
     }).join('')}
   </tbody></table></div>`;
@@ -1320,6 +1330,7 @@ function openWineModal(id){
   document.getElementById('wineBonded').value = w ? w.stock.bonded : 0;
   document.getElementById('wineKaren').value = w ? w.stock.karen : 0;
   document.getElementById('wineWestlands').value = w ? w.stock.westlands : 0;
+  document.getElementById('winePrice').value = w && w.price ? w.price : '';
   document.getElementById('wineNotes').value = w ? (w.notes||'') : '';
   wineBackdrop.classList.add('open');
 }
@@ -1358,6 +1369,7 @@ document.getElementById('btnSaveWine').addEventListener('click', async ()=>{
     producer: document.getElementById('wineProducer').value.trim(),
     sku: document.getElementById('wineSku').value.trim(),
     notes: document.getElementById('wineNotes').value.trim(),
+    price: parseFloat(document.getElementById('winePrice').value) || 0,
     stock: {
       bonded: Math.max(0, parseInt(document.getElementById('wineBonded').value||0)),
       karen: Math.max(0, parseInt(document.getElementById('wineKaren').value||0)),
@@ -1406,6 +1418,10 @@ function addMoveLine(){
     </select>
     <button type="button" class="line-remove" title="Remove this wine">&times;</button>
     <div class="line-stock"></div>
+    <div class="line-price" style="display:none;grid-column:1/-1;margin-top:2px;">
+      <label style="font-size:11.5px;color:var(--ink-soft);display:block;margin-bottom:3px;">Price per bottle (KES)</label>
+      <input type="number" class="line-price-input" min="0" step="0.01" style="width:130px;" placeholder="0.00">
+    </div>
   `;
   document.getElementById('moveLines').appendChild(div);
   div.querySelector('.line-wine').addEventListener('change', ()=>updateLineStock(div));
@@ -1413,6 +1429,7 @@ function addMoveLine(){
     if(document.querySelectorAll('.move-line').length <= 1){ toast('At least one wine is needed', 'error'); return; }
     div.remove();
   });
+  div.querySelector('.line-price').style.display = currentMoveType()==='remove' ? 'block' : 'none';
   updateLineStock(div);
 }
 function updateLineStock(lineEl){
@@ -1420,9 +1437,14 @@ function updateLineStock(lineEl){
   const stockEl = lineEl.querySelector('.line-stock');
   if(!w){ stockEl.innerHTML=''; return; }
   stockEl.innerHTML = `<span>In stock — Bonded: <b>${w.stock.bonded}</b></span> · <span>Karen: <b>${w.stock.karen}</b></span> · <span>Westlands: <b>${w.stock.westlands}</b></span>`;
+  const priceInput = lineEl.querySelector('.line-price-input');
+  if(priceInput && !priceInput.value && w.price){ priceInput.value = w.price; }
 }
 function refreshAllLineStocks(){
   document.querySelectorAll('.move-line').forEach(updateLineStock);
+}
+function toggleMoveLinePriceFields(show){
+  document.querySelectorAll('.move-line .line-price').forEach(el=>{ el.style.display = show ? 'block' : 'none'; });
 }
 document.getElementById('btnAddMoveLine').addEventListener('click', addMoveLine);
 
@@ -1544,6 +1566,92 @@ function renderLastReleaseCard(){
   </div>`;
   document.getElementById('btnViewLastRelease').addEventListener('click', ()=> openBatchModal(b.batchId, state.movements));
 }
+
+function formatKES(n){
+  return 'KES ' + Math.round(n).toLocaleString('en-KE');
+}
+function renderSalesSummaryCard(){
+  const card = document.getElementById('salesSummaryCard');
+  const soldMovements = state.movements.filter(m=>m.type==='remove');
+  if(!soldMovements.length){ card.style.display = 'none'; return; }
+
+  const priced = soldMovements.filter(m=>m.lineTotal>0);
+  const totalRevenue = priced.reduce((s,m)=>s+m.lineTotal,0);
+  const totalBottlesSold = soldMovements.reduce((s,m)=>s+m.qty,0);
+  const unpricedBottles = soldMovements.filter(m=>!m.lineTotal).reduce((s,m)=>s+m.qty,0);
+
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const monthMovements = priced.filter(m=>m.date.startsWith(thisMonth));
+  const monthRevenue = monthMovements.reduce((s,m)=>s+m.lineTotal,0);
+
+  // Top customer by revenue
+  const byCustomer = {};
+  soldMovements.forEach(m=>{
+    const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
+    const name = (inv && inv.customer && inv.customer.trim()) || 'No customer recorded';
+    if(!byCustomer[name]) byCustomer[name] = 0;
+    byCustomer[name] += (m.lineTotal || 0);
+  });
+  const topCustomer = Object.entries(byCustomer).sort((a,b)=>b[1]-a[1])[0];
+
+  // Breakdown by wine — so the totals below can be checked line by line against your own records
+  const byWine = {};
+  soldMovements.forEach(m=>{
+    if(!byWine[m.wineId]) byWine[m.wineId] = {qty:0, revenue:0};
+    byWine[m.wineId].qty += m.qty;
+    byWine[m.wineId].revenue += (m.lineTotal || 0);
+  });
+  const wineRows = Object.entries(byWine)
+    .map(([wineId, v])=>({wine: wineById(wineId), ...v}))
+    .filter(r=>r.wine)
+    .sort((a,b)=>a.wine.name.localeCompare(b.wine.name));
+  const checkQty = wineRows.reduce((s,r)=>s+r.qty,0);
+  const checkRevenue = wineRows.reduce((s,r)=>s+r.revenue,0);
+
+  card.style.display = 'block';
+  card.innerHTML = `<div class="panel" style="border-color:var(--green);">
+    <div class="panel-head">
+      <h3>💰 Sales</h3>
+      <button class="btn ghost small" data-goto="depleted">View by customer →</button>
+    </div>
+    <div class="panel-body">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;">
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">All-time revenue</div>
+          <div style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;">${formatKES(totalRevenue)}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">This month</div>
+          <div style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;">${formatKES(monthRevenue)}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Bottles sold</div>
+          <div style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;">${totalBottlesSold}</div>
+        </div>
+        ${topCustomer ? `<div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);">Top customer</div>
+          <div style="font-size:15px;font-weight:600;margin-top:3px;">${esc(topCustomer[0])}</div>
+        </div>` : ''}
+      </div>
+      ${unpricedBottles>0 ? `<div style="margin-top:12px;font-size:12px;color:var(--ink-soft);">⚠ ${unpricedBottles} sold bottle${unpricedBottles===1?'':'s'} had no price recorded and ${unpricedBottles===1?"isn't":"aren't"} included in revenue above.</div>` : ''}
+
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line-soft);">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Breakdown by wine — all-time</div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Wine</th><th>Bottles</th><th>Cartons</th><th>Revenue</th></tr></thead>
+          <tbody>${wineRows.map(r=>`
+            <tr><td>${esc(r.wine.name)}</td><td>${r.qty}</td><td>${cartonLabel(r.qty)}</td><td>${r.revenue>0?formatKES(r.revenue):'—'}</td></tr>
+          `).join('')}</tbody>
+          <tfoot><tr style="font-weight:700;border-top:2px solid var(--line);">
+            <td>Total (check against your records)</td><td>${checkQty}</td><td>${cartonLabel(checkQty)}</td><td>${checkRevenue>0?formatKES(checkRevenue):'—'}</td>
+          </tr></tfoot>
+        </table></div>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('salesSummaryCard').querySelector('[data-goto="depleted"]').addEventListener('click', ()=> goto('depleted'));
+}
+
 document.getElementById('btnLogMovement').addEventListener('click', openMoveModal);
 function openMoveModal(){
   if(!state.wines.some(w=>!w.archived)){ toast('Add an active wine first (or unarchive one)', 'error'); return; }
@@ -1576,6 +1684,7 @@ function setMoveType(type){
   document.getElementById('invoiceFields').style.display = type==='remove' ? 'block' : 'none';
   document.getElementById('tastingContactField').style.display = type==='tasting' ? 'block' : 'none';
   document.getElementById('receivedFields').style.display = type==='received' ? 'block' : 'none';
+  toggleMoveLinePriceFields(type==='remove');
   moveBackdrop.dataset.type = type;
   const label = document.getElementById('fromField').querySelector('label');
   label.textContent = type==='move' ? 'From' : type==='received' ? 'Received into' : 'Location';
@@ -1628,7 +1737,8 @@ async function saveMovementInner(){
         return;
       }
     }
-    lines.push({wine:w, qty, unitLabel: unit==='case' ? `${rawQty} case${rawQty===1?'':'s'}` : `${rawQty} bottle${rawQty===1?'':'s'}`});
+    lines.push({wine:w, qty, unitLabel: unit==='case' ? `${rawQty} case${rawQty===1?'':'s'}` : `${rawQty} bottle${rawQty===1?'':'s'}`,
+      unitPrice: type==='remove' ? (parseFloat(el.querySelector('.line-price-input').value) || 0) : 0});
   }
   // Guard against the same wine appearing twice and jointly exceeding stock (not relevant for receiving)
   if(!isIncrease){
@@ -1685,6 +1795,7 @@ async function saveMovementInner(){
       w.stock[from] -= line.qty;
       movement.location = from;
       if(type==='tasting' && tastingContact) movement.contact = tastingContact;
+      if(type==='remove' && line.unitPrice > 0){ movement.unitPrice = line.unitPrice; movement.lineTotal = line.unitPrice * line.qty; }
       if(sharedInvoiceId){
         movement.invoiceId = sharedInvoiceId;
         const inv = invoicesIndex.find(i=>i.id===sharedInvoiceId);
@@ -1766,6 +1877,7 @@ function openEditMoveModal(id){
   document.getElementById('editMoveDate').value = m.date;
   document.getElementById('editMoveNote').value = m.note || '';
   document.getElementById('editTastingContact').value = m.contact || '';
+  document.getElementById('editUnitPrice').value = m.unitPrice || '';
   document.getElementById('editReceivedSupplier').value = m.supplier || '';
   document.getElementById('editReceivedReference').value = m.reference || '';
   setEditMoveType(m.type);
@@ -1787,6 +1899,7 @@ function setEditMoveType(type){
   document.getElementById('editFromToRow').style.gridTemplateColumns = type==='move' ? '1fr 1fr' : '1fr';
   document.getElementById('editToField').style.display = type==='move' ? 'block' : 'none';
   document.getElementById('editTastingContactField').style.display = type==='tasting' ? 'block' : 'none';
+  document.getElementById('editPriceField').style.display = type==='remove' ? 'block' : 'none';
   document.getElementById('editReceivedFields').style.display = type==='received' ? 'grid' : 'none';
   editMoveBackdrop.dataset.type = type;
   document.getElementById('editFromField').querySelector('label').textContent = type==='move' ? 'From' : type==='received' ? 'Received into' : 'Location';
@@ -1870,6 +1983,14 @@ document.getElementById('btnSaveEditMove').addEventListener('click', async ()=>{
   } else {
     delete m.supplier;
     delete m.reference;
+  }
+  if(type==='remove'){
+    const price = parseFloat(document.getElementById('editUnitPrice').value) || 0;
+    if(price > 0){ m.unitPrice = price; m.lineTotal = price * qty; }
+    else { delete m.unitPrice; delete m.lineTotal; }
+  } else {
+    delete m.unitPrice;
+    delete m.lineTotal;
   }
 
   await saveJSON(STATE_KEY, state, true);
@@ -2074,16 +2195,19 @@ async function generateAndDownloadExport(month){
   const ledger = rows.map(m=>{
     const w = wineById(m.wineId) || {};
     const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
+    const custName = inv ? (inv.customer||'') : (m.type==='tasting' ? (m.contact||'') : (m.supplier||''));
     return {
       Date: m.date,
       Wine: w.name || '',
       Vintage: w.vintage || '',
-      Event: m.type==='move' ? 'Transfer' : m.type==='received' ? 'Received' : m.type==='remove' ? 'Sold / removed' : 'Tasting',
+      Event: m.isRelease ? 'Release' : m.type==='move' ? 'Transfer' : m.type==='received' ? 'Received' : m.type==='remove' ? 'Sold / removed' : 'Tasting',
       Quantity: m.qty,
+      'Unit Price (KES)': m.unitPrice || '',
+      'Line Total (KES)': m.lineTotal || '',
       From: m.type==='move' ? locLabel(m.from) : locLabel(m.location),
       To: m.type==='move' ? locLabel(m.to) : '',
       'Invoice # / Reference': inv ? (inv.number||'') : (m.reference||''),
-      'Customer / Supplier': inv ? (inv.customer||'') : (m.supplier||''),
+      'Customer / Supplier': custName,
       Note: m.note || '',
       'Email Alert': m.emailStatus || ''
     };
@@ -2278,14 +2402,16 @@ function renderDepleted(){
     const lastDate = g.movements.reduce((max,m)=> m.date>max?m.date:max, '');
     const soldCount = g.movements.filter(m=>m.type==='remove').length;
     const tastingCount = g.movements.filter(m=>m.type==='tasting').length;
+    const revenue = g.movements.reduce((s,m)=>s+(m.lineTotal||0),0);
     const badges = [soldCount ? `<span class="badge red">${soldCount} sold</span>` : '', tastingCount ? `<span class="badge amber">tasting</span>` : ''].filter(Boolean).join(' ');
     return `<tr class="clickable-row" data-group-key="${esc(key)}" style="cursor:pointer;">
       <td><div class="wine-name">${esc(g.name)}</div><div style="margin-top:3px;">${badges}</div></td>
       <td>${wineCount} wine${wineCount===1?'':'s'}</td>
       <td>${totalQty} bottle${totalQty===1?'':'s'}</td>
+      <td>${revenue>0?formatKES(revenue):'—'}</td>
       <td>${lastDate?fmtDate(lastDate):'—'}</td>
     </tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="4">Nothing sold or tasted yet.</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="5">Nothing sold or tasted yet.</td></tr>`;
   body.querySelectorAll('[data-group-key]').forEach(tr=>{
     tr.addEventListener('click', ()=> openCustomerDetailModal(tr.dataset.groupKey));
   });
@@ -2297,17 +2423,20 @@ function openCustomerDetailModal(key){
   if(!group) return;
   document.getElementById('customerModalTitle').textContent = group.name;
   const totalQty = group.movements.reduce((s,m)=>s+m.qty,0);
-  document.getElementById('customerModalSubtitle').textContent = `${group.movements.length} movement${group.movements.length===1?'':'s'} · ${totalQty} bottle${totalQty===1?'':'s'} total`;
+  const totalRevenue = group.movements.reduce((s,m)=>s+(m.lineTotal||0),0);
+  document.getElementById('customerModalSubtitle').textContent = `${group.movements.length} movement${group.movements.length===1?'':'s'} · ${totalQty} bottle${totalQty===1?'':'s'}${totalRevenue>0?` · ${formatKES(totalRevenue)}`:''}`;
   const rows = [...group.movements].sort((a,b)=>b.createdAt-a.createdAt);
   const body = document.getElementById('customerModalBody');
-  body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Location</th><th>Ref</th></tr></thead><tbody>
+  body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Price</th><th>Total</th><th>Location</th><th>Ref</th></tr></thead><tbody>
     ${rows.map(m=>{
       const w = wineById(m.wineId);
       const badge = m.type==='remove' ? '<span class="badge red">Sold</span>' : '<span class="badge amber">Tasting</span>';
       let ref;
       if(m.type==='remove'){ const inv = m.invoiceId?invoicesIndex.find(i=>i.id===m.invoiceId):null; ref = inv?esc(inv.number||'—'):'—'; }
       else { ref = esc(m.note||'—'); }
-      return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${badge}</td><td>${m.qty}</td><td>${locLabel(m.location)}</td><td>${ref}</td></tr>`;
+      const priceCell = m.unitPrice ? formatKES(m.unitPrice) : '—';
+      const totalCell = m.lineTotal ? formatKES(m.lineTotal) : '—';
+      return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${badge}</td><td>${m.qty}</td><td>${priceCell}</td><td>${totalCell}</td><td>${locLabel(m.location)}</td><td>${ref}</td></tr>`;
     }).join('')}
   </tbody></table></div>`;
   document.getElementById('customerModalBackdrop').classList.add('open');
