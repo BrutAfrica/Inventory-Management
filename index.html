@@ -109,7 +109,7 @@
   .btn:disabled{opacity:.45;cursor:not-allowed;}
 
   /* Dashboard cellar cards */
-  .cellar-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:22px;}
+  .cellar-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:22px;}
   @media(max-width:820px){.cellar-row{grid-template-columns:1fr;}}
   .bin{
     background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
@@ -146,6 +146,7 @@
   .badge.red{background:var(--red-soft);color:var(--red);}
   .badge.gold{background:var(--gold-soft);color:var(--gold);}
   .badge.gray{background:#EEE9DE;color:var(--ink-soft);}
+  .badge.blue{background:var(--wine-soft);color:var(--wine);}
 
   .empty-state{padding:48px 20px;text-align:center;color:var(--ink-soft);}
   .empty-state h3{font-size:16px;margin:0 0 6px;color:var(--ink);}
@@ -321,6 +322,7 @@
       <div class="cellar-row" id="binRow"></div>
       <div id="lastReleaseCard" style="display:none;"></div>
       <div id="salesSummaryCard" style="display:none;"></div>
+      <div id="consignmentCard" style="display:none;"></div>
       <div class="panel">
         <div class="panel-head"><h3>Recent activity</h3><button class="btn ghost small" data-goto="movements">View all →</button></div>
         <div class="panel-body" style="padding-top:4px;">
@@ -521,6 +523,26 @@
         </div>
       </div>
       <div class="panel">
+        <div class="panel-head"><h3>🚚 Release order defaults</h3></div>
+        <div class="panel-body">
+          <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">Pre-fills these each time you log a release, so you're not retyping the same details. All editable per release.</p>
+          <div class="settings-grid">
+            <div>
+              <div class="field"><label>Bonded warehouse / agent name</label><input id="setBondedAgent" placeholder="e.g. Rising Freight Ltd."></div>
+              <div class="field"><label>Warehouse location</label><textarea id="setBondedLocation" rows="2" placeholder="e.g. Off Mombasa Road, Behind Tuskys HQ, Nairobi"></textarea></div>
+              <div class="field"><label>Collecting transporter</label><input id="setDefaultTransporter" placeholder="e.g. Brūt Africa Ltd."></div>
+            </div>
+            <div>
+              <div class="field"><label>Release order email <span style="font-weight:400;color:var(--ink-soft);">(sent to the bonded warehouse/agent)</span></label><input id="setBondedEmail" placeholder="agent@example.com"></div>
+              <div class="hint">This is separate from your general alert email above — release orders go specifically here, with the full authorization document details.</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot" style="border-top:1px solid var(--line-soft);">
+          <button class="btn" id="btnSaveReleaseDefaults">Save release defaults</button>
+        </div>
+      </div>
+      <div class="panel">
         <div class="panel-head"><h3>Full backup</h3></div>
         <div class="panel-body">
           <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">Downloads everything — your full wine list, every movement, and every invoice record — as one file. Nothing gets deleted from the app; this is just a safety copy. Worth doing every so often, and especially before using Reset below.</p>
@@ -583,11 +605,12 @@
     <div class="modal-body">
       <div class="field">
         <label>Event type</label>
-        <div class="radio-cards detailed-group" id="moveTypeCards" style="grid-template-columns:repeat(2,1fr);">
+        <div class="radio-cards detailed-group" id="moveTypeCards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
           <label class="radio-card detailed active" data-type="move"><input type="radio" name="moveType" value="move" checked><span class="rc-title">🔄 Transfer</span><span class="rc-caption">Moving stock between your own Bonded/Karen/Westlands locations</span></label>
           <label class="radio-card detailed" data-type="received"><input type="radio" name="moveType" value="received"><span class="rc-title">📥 Received</span><span class="rc-caption">A new shipment just arrived from a supplier</span></label>
           <label class="radio-card detailed" data-type="remove"><input type="radio" name="moveType" value="remove"><span class="rc-title">📦 Sold</span><span class="rc-caption">Wine leaving for good — going to a customer</span></label>
           <label class="radio-card detailed" data-type="tasting"><input type="radio" name="moveType" value="tasting"><span class="rc-title">🍷 Tasting</span><span class="rc-caption">Wine poured or opened for a tasting, not sold</span></label>
+          <label class="radio-card detailed" data-type="consignment"><input type="radio" name="moveType" value="consignment"><span class="rc-title">📤 Consignment</span><span class="rc-caption">Wine sent out, still yours until it sells or comes back</span></label>
         </div>
       </div>
       <div class="field-row" id="fromToRow">
@@ -606,7 +629,11 @@
       <div class="field" style="margin-top:6px;">
         <label>Wines &amp; quantities</label>
         <div id="moveLines"></div>
-        <button class="btn secondary small" id="btnAddMoveLine" type="button" style="margin-top:4px;">+ Add another wine</button>
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-top:6px;flex-wrap:wrap;">
+          <button class="btn secondary small" id="btnAddMoveLine" type="button">+ Add another wine</button>
+          <div class="field" style="margin:0;max-width:120px;"><label style="font-size:11px;">Quick fill</label><input id="moveQuickFillQty" type="number" min="0" value="1" style="width:100%;"></div>
+          <button class="btn secondary small" id="btnMoveQuickFillAll" type="button">Set all lines to this</button>
+        </div>
       </div>
 
       <div id="tastingContactField" style="display:none;">
@@ -618,6 +645,15 @@
           <div class="field"><label>Supplier</label><input id="receivedSupplier" list="producerList" placeholder="e.g. Domaine des Loges"></div>
           <div class="field"><label>Reference / PO number</label><input id="receivedReference" placeholder="e.g. Shipment ref, waybill #"></div>
         </div>
+      </div>
+
+      <div id="consignmentFields" style="display:none;">
+        <div class="field-row">
+          <div class="field"><label>Customer / Company</label><input id="consignCustomer" placeholder="Who has this stock?"></div>
+          <div class="field"><label>Agreement ends</label><input id="consignEndDate" type="date"></div>
+        </div>
+        <div class="field"><label>Agreement reference <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><input id="consignReference" placeholder="e.g. CONS-0007"></div>
+        <div class="hint">Stock leaves your count now, but won't count as revenue until you mark it sold. You'll get an email reminder if the agreement date passes with stock still outstanding.</div>
       </div>
 
       <div id="invoiceFields" style="display:none;">
@@ -724,17 +760,39 @@
 
 <!-- Release Order Modal -->
 <div class="modal-backdrop" id="releaseModalBackdrop">
-  <div class="modal" style="max-width:640px;">
+  <div class="modal" style="max-width:660px;">
     <div class="modal-head"><h3>🚚 Log a release</h3><button class="modal-close" data-close="releaseModalBackdrop">&times;</button></div>
     <div class="modal-body">
-      <div class="hint" style="margin-bottom:12px;">Releases stock out of Bonded Warehousing, by the carton. Enter the carton count for each wine on this release order — leave any wine at 0 to skip it. The running total below should match your release order paperwork before you submit.</div>
+      <div class="hint" style="margin-bottom:12px;">Releases stock out of Bonded Warehousing, by the carton, and generates a signed-format authorization document. The running total below should match your release order paperwork before you submit.</div>
       <div class="field-row">
+        <div class="field"><label>Release Order No.</label><input id="releaseOrderNo" placeholder="e.g. 003"></div>
         <div class="field"><label>Date</label><input id="releaseDate" type="date"></div>
-        <div class="field"><label>Release into</label>
-          <select id="releaseTo"><option value="karen">Karen Warehouse</option><option value="westlands">Westlands Office</option></select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>To (Bonded Warehouse/Agent)</label><input id="releaseAgent" placeholder="e.g. Rising Freight Ltd."></div>
+        <div class="field"><label>Warehouse location</label><input id="releaseWarehouseLocation" placeholder="e.g. Off Mombasa Road, Nairobi"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Collecting transporter</label><input id="releaseTransporter" placeholder="e.g. Brūt Africa Ltd."></div>
+        <div class="field"><label>Vehicle Reg. No.</label><input id="releaseVehicleReg" placeholder="e.g. KAW015W"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Driver Name / ID No.</label><input id="releaseDriverName" placeholder="e.g. Aman"></div>
+        <div class="field"><label>Partial release?</label>
+          <select id="releasePartial"><option value="NO">No</option><option value="YES">Yes</option></select>
         </div>
       </div>
-      <div class="field"><label>Release order reference <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><input id="releaseReference" placeholder="e.g. RO-0142"></div>
+      <div class="field-row">
+        <div class="field"><label>Release into (your location)</label>
+          <select id="releaseTo"><option value="karen">Karen Warehouse</option><option value="westlands">Westlands Office</option></select>
+        </div>
+        <div class="field"><label>Send release order to <span style="font-weight:400;color:var(--ink-soft);">(bonded agent's email)</span></label><input id="releaseSendEmail" placeholder="agent@example.com"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px;flex-wrap:wrap;">
+        <div class="field" style="margin:0;max-width:140px;"><label>Quick fill</label><input id="releaseQuickFillQty" type="number" min="0" value="5" style="width:100%;"></div>
+        <button class="btn secondary small" id="btnQuickFillAll" type="button">Set every wine to this</button>
+        <button class="btn secondary small" id="btnQuickFillClear" type="button">Clear all to 0</button>
+      </div>
       <div class="table-scroll" style="margin-top:10px;">
         <table>
           <thead><tr><th>Wine</th><th style="width:110px;">Cartons</th><th style="width:90px;">Bottles</th></tr></thead>
@@ -750,6 +808,20 @@
       <button class="btn secondary" data-close="releaseModalBackdrop">Cancel</button>
       <button class="btn" id="btnSubmitRelease">Log release</button>
     </div>
+  </div>
+</div>
+
+<!-- Consignment Detail Modal -->
+<div class="modal-backdrop" id="consignmentModalBackdrop">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <div>
+        <h3 id="consignModalTitle">Consignment</h3>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;" id="consignModalSubtitle"></div>
+      </div>
+      <button class="modal-close" data-close="consignmentModalBackdrop">&times;</button>
+    </div>
+    <div class="modal-body" id="consignModalBody"></div>
   </div>
 </div>
 
@@ -899,13 +971,14 @@ async function connectFirebase(cfg, silent){
 async function reloadFromCloud(){
   const loadedState = await loadJSON(STATE_KEY, true, null);
   if(loadedState){
-    state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}, pendingExportMonth:'', lastAutoNotifiedMonth:''}, loadedState);
-    state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:''}, state.settings||{});
+    state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}, pendingExportMonth:'', lastAutoNotifiedMonth:'', lastReleaseOrderNo:0}, loadedState);
+    state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:''}, state.settings||{});
   }
   invoicesIndex = await loadJSON(INVOICE_INDEX_KEY, true, []);
   document.getElementById('bizName').textContent = state.businessName || 'Brut Africa';
   renderAll();
   checkMonthlyExportRollover();
+  checkOverdueConsignments();
 }
 document.getElementById('btnConnectFirebase').addEventListener('click', async ()=>{
   const raw = document.getElementById('firebaseConfigInput').value.trim();
@@ -938,7 +1011,7 @@ let state = {
   businessName: 'Brut Africa',
   wines: [],
   movements: [],
-  settings: {emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:''}
+  settings: {emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:''}
 };
 let invoicesIndex = [];
 
@@ -979,7 +1052,7 @@ function goto(tab){
 function renderDashboard(){
   const row = document.getElementById('binRow');
   const maxTotal = Math.max(1, ...LOCATIONS.map(l => state.wines.reduce((s,w)=>s+Math.max(0,w.stock[l.key]),0)));
-  row.innerHTML = LOCATIONS.map(l=>{
+  let binsHtml = LOCATIONS.map(l=>{
     const rawTotal = state.wines.reduce((s,w)=>s+w.stock[l.key],0);
     const total = Math.max(0, rawTotal);
     const hasIssue = state.wines.some(w=>w.stock[l.key] < 0);
@@ -998,10 +1071,35 @@ function renderDashboard(){
       ${hasIssue ? `<div style="margin-top:8px;font-size:11.5px;color:var(--red);font-weight:600;">⚠ Data issue here — tap to review</div>` : ''}
     </div>`;
   }).join('');
-  row.querySelectorAll('.bin').forEach(el=>{
+
+  // Total Sales card, styled and placed the same way as the three location cards
+  const soldMovementsAll = state.movements.filter(m=>m.type==='remove');
+  const totalRevenueAll = soldMovementsAll.reduce((s,m)=>s+(m.lineTotal||0),0);
+  const totalBottlesSoldAll = soldMovementsAll.reduce((s,m)=>s+m.qty,0);
+  const thisMonthKey = new Date().toISOString().slice(0,7);
+  const monthRevenueAll = soldMovementsAll.filter(m=>m.date.startsWith(thisMonthKey)).reduce((s,m)=>s+(m.lineTotal||0),0);
+  const salesGaugePct = totalRevenueAll>0 ? Math.round((monthRevenueAll/totalRevenueAll)*100) : 0;
+  binsHtml += `<div class="bin" id="salesBinCard" role="button" tabindex="0" style="border-color:var(--green);">
+    <div class="loc-label" style="color:var(--green);">Sales · tap for details</div>
+    <div class="loc-name">💰 Total Sales</div>
+    <div class="gauge"><div class="gauge-fill" style="width:${salesGaugePct}%;background:linear-gradient(90deg,var(--green),#5C9E71);"></div></div>
+    <div class="bin-stats">
+      <div class="count" style="font-size:22px;">${formatKES(totalRevenueAll)}</div>
+      <div class="skus">${totalBottlesSoldAll} bottle${totalBottlesSoldAll===1?'':'s'} sold</div>
+    </div>
+    <div style="margin-top:6px;font-size:12px;color:var(--ink-soft);">${formatKES(monthRevenueAll)} this month</div>
+  </div>`;
+
+  row.innerHTML = binsHtml;
+  row.querySelectorAll('.bin[data-loc]').forEach(el=>{
     el.addEventListener('click', ()=> openLocationModal(el.dataset.loc));
     el.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openLocationModal(el.dataset.loc); } });
   });
+  const salesBin = document.getElementById('salesBinCard');
+  if(salesBin){
+    salesBin.addEventListener('click', ()=> goto('depleted'));
+    salesBin.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); goto('depleted'); } });
+  }
 
   const feed = document.getElementById('recentActivityFeed');
   const recentBatches = computeBatches(state.movements).sort((a,b)=>b.createdAt-a.createdAt).slice(0,6);
@@ -1032,6 +1130,7 @@ function renderDashboard(){
   }
   renderLastReleaseCard();
   renderSalesSummaryCard();
+  renderConsignmentCard();
 }
 
 /* ---------- Location detail modal ---------- */
@@ -1145,6 +1244,7 @@ function typeBadgeFor(type, isRelease){
   return type==='move' ? `<span class="badge gray">Transfer</span>`
     : type==='received' ? `<span class="badge green">Received</span>`
     : type==='remove' ? `<span class="badge red">Sold / removed</span>`
+    : type==='consignment' ? `<span class="badge blue">Consignment</span>`
     : `<span class="badge amber">Tasting</span>`;
 }
 function emailBadgeFor(status){
@@ -1164,6 +1264,7 @@ function computeBatches(movementsList){
       map[key] = {batchId:key, type:m.type, date:m.date, createdAt:m.createdAt, movements:[],
         emailStatus:m.emailStatus, from:m.from, to:m.to, location:m.location,
         invoiceId:m.invoiceId, contact:m.contact, supplier:m.supplier, reference:m.reference,
+        consignee:m.consignee, agreementEnd:m.agreementEnd, agreementRef:m.agreementRef,
         isRelease: !!m.isRelease, releaseReference: m.releaseReference || ''};
       order.push(key);
     }
@@ -1179,6 +1280,7 @@ function batchRow(b){
   const inv = b.invoiceId ? invoicesIndex.find(i=>i.id===b.invoiceId) : null;
   const refCell = b.type==='received' ? (b.supplier||b.reference ? `<span class="mono" style="font-size:11px;">${esc(b.supplier||'')}${b.supplier&&b.reference?' · ':''}${esc(b.reference||'')}</span>` : '—')
     : b.type==='tasting' ? (b.contact ? esc(b.contact) : '—')
+    : b.type==='consignment' ? (b.consignee ? esc(b.consignee) : '—')
     : (inv ? `<span class="mono">${esc(inv.number||'—')}</span>` : '—');
   return `<tr class="clickable-row" data-batch-id="${esc(b.batchId)}" style="cursor:pointer;">
     <td>${fmtDate(b.date)}</td><td>${esc(wineSummary)}</td><td>${typeBadgeFor(b.type, b.isRelease)}</td><td>${totalQty}</td><td>${route}</td>
@@ -1500,6 +1602,12 @@ function toggleMoveLinePriceFields(show){
   document.querySelectorAll('.move-line .line-price').forEach(el=>{ el.style.display = show ? 'block' : 'none'; });
 }
 document.getElementById('btnAddMoveLine').addEventListener('click', addMoveLine);
+document.getElementById('btnMoveQuickFillAll').addEventListener('click', ()=>{
+  const qty = Math.max(0, parseInt(document.getElementById('moveQuickFillQty').value||0));
+  const lineQtyInputs = document.querySelectorAll('.move-line .line-qty');
+  if(!lineQtyInputs.length){ toast('Add a wine line first', 'error'); return; }
+  lineQtyInputs.forEach(inp=>{ inp.value = qty; });
+});
 
 document.getElementById('btnQuickMove').addEventListener('click', openMoveModal);
 
@@ -1513,11 +1621,22 @@ function updateReleaseRunningTotal(){
   });
   document.getElementById('releaseRunningTotal').textContent = `${cartons} carton${cartons===1?'':'s'} · ${bottles} bottle${bottles===1?'':'s'}`;
 }
+function nextReleaseOrderNo(){
+  const n = (state.lastReleaseOrderNo || 0) + 1;
+  return String(n).padStart(3, '0');
+}
 function openReleaseModal(){
   const activeWines = state.wines.filter(w=>!w.archived).sort((a,b)=>a.name.localeCompare(b.name));
   if(!activeWines.length){ toast('Add a wine first', 'error'); return; }
+  document.getElementById('releaseOrderNo').value = nextReleaseOrderNo();
   document.getElementById('releaseDate').value = todayStr();
-  document.getElementById('releaseReference').value = '';
+  document.getElementById('releaseAgent').value = state.settings.bondedAgent || '';
+  document.getElementById('releaseWarehouseLocation').value = state.settings.bondedLocation || '';
+  document.getElementById('releaseTransporter').value = state.settings.defaultTransporter || '';
+  document.getElementById('releaseVehicleReg').value = '';
+  document.getElementById('releaseDriverName').value = '';
+  document.getElementById('releasePartial').value = 'NO';
+  document.getElementById('releaseSendEmail').value = state.settings.bondedEmail || '';
   document.getElementById('releaseTo').value = 'karen';
   const body = document.getElementById('releaseWinesBody');
   body.innerHTML = activeWines.map(w=>`
@@ -1538,12 +1657,132 @@ function openReleaseModal(){
   document.getElementById('releaseModalBackdrop').classList.add('open');
 }
 document.getElementById('btnOpenRelease').addEventListener('click', openReleaseModal);
+document.getElementById('btnQuickFillAll').addEventListener('click', ()=>{
+  const qty = Math.max(0, parseInt(document.getElementById('releaseQuickFillQty').value||0));
+  document.querySelectorAll('#releaseWinesBody .release-carton-input').forEach(inp=>{
+    inp.value = qty;
+    inp.dispatchEvent(new Event('input'));
+  });
+});
+document.getElementById('btnQuickFillClear').addEventListener('click', ()=>{
+  document.querySelectorAll('#releaseWinesBody .release-carton-input').forEach(inp=>{
+    inp.value = 0;
+    inp.dispatchEvent(new Event('input'));
+  });
+});
+
+const RELEASE_ORDER_TERMS = [
+  '1. Scope of authorization. This release order authorizes the named bonded warehouse/agent to release only the goods, quantities, and batches specified above, against the Bill of Lading/Waybill and Customs Entry numbers stated. No substitution or over-release is permitted without a fresh written authorization from Brut Africa Ltd.',
+  '2. Verification of documents. Before release, the agent must verify this order against the original customs entry, the customs release/exit note, and the delivery note. Goods must not be released where any of these documents are missing, inconsistent, or unsigned.',
+  '3. Duty, tax and excise compliance. Goods shall be released only once the agent has confirmed that all applicable import duty, excise duty, VAT and other statutory levies have been paid and cleared with the Kenya Revenue Authority, and that valid excise stamps are affixed to each unit as required under the Excisable Goods Management System (EGMS).',
+  '4. Authorized signatories. This order is valid only when signed by an authorized representative of Brut Africa Ltd, per the current signatory list held by the agent. Any change of signatories must be notified to the agent in writing in advance of the next release.',
+  '5. Partial releases. Partial release of a consignment is permitted only where explicitly marked on this order. Where not marked, the full quantity stated must be released in a single collection.',
+  '6. Inspection and condition on release. The agent shall inspect all cases/cartons for visible damage, breakage, leakage or tampering prior to handover, and shall notify Brut Africa Ltd immediately, with photographic evidence, of any exceptions noted. Goods handed over without a noted exception are deemed to have been in good order and condition at the time of release.',
+  '7. Storage conditions. Wine must be kept under appropriate temperature-controlled conditions and out of direct sunlight throughout bonded storage. The agent confirms no exposure to conditions likely to affect product quality prior to release.',
+  "8. Storage and demurrage charges. Any demurrage, storage or handling charges arising from delay in collection beyond the agreed free-storage period are for Brut Africa Ltd's account, save where the delay is caused by the agent's error, failure to act promptly on this order, or failure to have documentation in order.",
+  '9. Collection and transport. Goods shall be released only to the transporter, vehicle and driver named on this order, or to a party subsequently confirmed in writing by Brut Africa Ltd. The receiving driver must present valid identification, which the agent shall record against the collection note.',
+  '10. Validity period. This release order is valid for seven (7) days from the date of issue shown above. Any request for release after this period requires a new, dated authorization.',
+  '11. Liability and custody. The bonded warehouse/agent remains responsible for the safe custody of the goods until they are physically handed over to the authorized collector, evidenced by a signed delivery/collection note countersigned by the receiving driver.',
+  '12. Confidentiality. Pricing, cost and other commercial terms contained in or referable to this order are confidential and must not be disclosed to any third party.',
+  '13. Governing law. This release order is governed by the laws of the Republic of Kenya, and any dispute arising from it is subject to the jurisdiction of the Kenyan courts.'
+];
+
+function buildReleaseOrderWorkbook(rd){
+  // rd = {orderNo, dateStr, agent, warehouseLocation, transporter, vehicleReg, driverName, partial, goodsRows}
+  // goodsRows: [{name, cartons, bottlesPerCtn, totalBtls, remaining}]
+  const aoa = [];
+  const set = (rowIdx, arr) => { aoa[rowIdx] = arr; };
+  for(let i=0;i<70;i++) aoa.push([]);
+  set(2, ['','','Brūt Africa Ltd.']);
+  set(3, ['','','Le Mac Church Rd, Nairobi']);
+  set(4, ['','','PO Box 13989 - 00800']);
+  set(6, ['','','info@brutafrica.co.ke']);
+  set(8, ['','','BONDED WAREHOUSE RELEASE ORDER']);
+  set(10, ['','','Release Order No.:', rd.orderNo, 'Date:', rd.dateStr]);
+  set(11, ['','','To (Bonded Warehouse/Agent):', rd.agent, 'Warehouse Location:', rd.warehouseLocation]);
+  set(12, ['','','Collecting Transporter:', rd.transporter, 'Vehicle Reg. No.:', rd.vehicleReg]);
+  set(13, ['','','Driver Name / ID No.:', rd.driverName, 'Partial Release? (Y/N)', rd.partial]);
+  set(15, ['','','Goods Authorized for Release']);
+  set(16, ['','#','SKU Description','Total Ctns.','Btl. / Ctn','Total Btls.','Stock Remaining (Bonded)']);
+  let r = 17;
+  rd.goodsRows.forEach((g,i)=>{
+    set(r, ['', i+1, g.name, g.cartons || '', g.cartons ? CASE_SIZE : '', g.totalBtls || '', g.remaining]);
+    r++;
+  });
+  const totalCartons = rd.goodsRows.reduce((s,g)=>s+(g.cartons||0),0);
+  const totalBtls = rd.goodsRows.reduce((s,g)=>s+(g.totalBtls||0),0);
+  set(r, ['','','TOTAL', totalCartons, '', totalBtls, '']);
+  r += 2;
+  set(r, ['','','Terms and Conditions']); r++;
+  RELEASE_ORDER_TERMS.forEach(t=>{ set(r, ['','',t]); r++; });
+  r++;
+  set(r, ['','','Authorization']); r += 2;
+  set(r, ['','','Issued by: Brut Africa Ltd','','Received by: '+(rd.agent||'')]); r += 2;
+  set(r, ['','','Simon Svensson']); r++;
+  set(r, ['','','Name','','Name']); r += 3;
+  set(r, ['',' Signature','','Signature']); r += 2;
+  set(r, ['','',rd.dateStr]); r++;
+  set(r, ['','','Date','','Date']);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:3},{wch:4},{wch:40},{wch:16},{wch:12},{wch:14},{wch:20}];
+  ws['!merges'] = [
+    {s:{r:8,c:2},e:{r:8,c:6}},
+    {s:{r:15,c:2},e:{r:15,c:6}},
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Release Order');
+  return wb;
+}
+
+async function sendReleaseOrderEmail(rd, toEmail){
+  const s = state.settings;
+  if(!toEmail || !s.emailjsServiceId || !s.emailjsTemplateId || !s.emailjsPublicKey) return {status:'not_configured'};
+  const lines = rd.goodsRows.filter(g=>g.cartons>0).map(g=>
+    `${g.name} — ${g.cartons} carton${g.cartons===1?'':'s'} (${g.totalBtls} bottles) — remaining in Bonded: ${g.remaining}`
+  ).join('\n');
+  const detailsNote = [
+    `Collecting transporter: ${rd.transporter || '—'}`,
+    `Vehicle: ${rd.vehicleReg || '—'}`,
+    `Driver: ${rd.driverName || '—'}`,
+    `Partial release: ${rd.partial}`
+  ].join('\n');
+  const payload = {
+    service_id: s.emailjsServiceId,
+    template_id: s.emailjsTemplateId,
+    user_id: s.emailjsPublicKey,
+    template_params: {
+      to_email: toEmail,
+      wine_name: lines,
+      event_type: `Release Order No. ${rd.orderNo} — Authorization to release from Bonded Warehousing`,
+      quantity: rd.goodsRows.reduce((s2,g)=>s2+(g.totalBtls||0),0),
+      location: rd.warehouseLocation || '',
+      date: rd.dateStr,
+      note: detailsNote,
+      business_name: state.businessName || 'Brut Africa'
+    }
+  };
+  if(s.emailjsPrivateKey) payload.accessToken = s.emailjsPrivateKey;
+  try{
+    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    return {status: res.ok ? 'sent' : 'failed'};
+  }catch(e){ return {status:'failed'}; }
+}
 
 document.getElementById('btnSubmitRelease').addEventListener('click', async ()=>{
   const btn = document.getElementById('btnSubmitRelease');
+  const orderNo = document.getElementById('releaseOrderNo').value.trim() || nextReleaseOrderNo();
   const date = document.getElementById('releaseDate').value || todayStr();
   const to = document.getElementById('releaseTo').value;
-  const reference = document.getElementById('releaseReference').value.trim();
+  const agent = document.getElementById('releaseAgent').value.trim();
+  const warehouseLocation = document.getElementById('releaseWarehouseLocation').value.trim();
+  const transporter = document.getElementById('releaseTransporter').value.trim();
+  const vehicleReg = document.getElementById('releaseVehicleReg').value.trim();
+  const driverName = document.getElementById('releaseDriverName').value.trim();
+  const partial = document.getElementById('releasePartial').value;
+  const sendEmailTo = document.getElementById('releaseSendEmail').value.trim();
 
   const lines = [];
   document.querySelectorAll('#releaseWinesBody tr').forEach(tr=>{
@@ -1556,7 +1795,6 @@ document.getElementById('btnSubmitRelease').addEventListener('click', async ()=>
   btn.textContent = 'Checking stock…';
   try{
     if(db) await reloadFromCloud();
-    // Re-render the modal's per-wine "Bonded: X bottles" hints could now be stale, but validate against fresh truth regardless
     for(const line of lines){
       const w = wineById(line.wineId);
       if(!w || w.stock.bonded < line.qty){
@@ -1571,20 +1809,57 @@ document.getElementById('btnSubmitRelease').addEventListener('click', async ()=>
       w.stock.bonded -= line.qty;
       w.stock[to] += line.qty;
       const movement = {id: uid(), batchId, wineId: w.id, type:'move', qty: line.qty,
-        date, note: reference ? `Release ${reference} — ${line.cartons} carton${line.cartons===1?'':'s'}` : `Release — ${line.cartons} carton${line.cartons===1?'':'s'}`,
-        from:'bonded', to, isRelease:true, releaseReference: reference || '', createdAt: Date.now(), emailStatus:'pending'};
+        date, note: `Release ${orderNo} — ${line.cartons} carton${line.cartons===1?'':'s'}`,
+        from:'bonded', to, isRelease:true, releaseReference: orderNo, createdAt: Date.now(), emailStatus:'pending'};
       state.movements.push(movement);
       newMovements.push(movement);
     }
+
+    // Build the full goods list (every active wine) with cartons released this time and remaining Bonded stock
+    const activeWinesSorted = state.wines.filter(w=>!w.archived).sort((a,b)=>a.name.localeCompare(b.name));
+    const releasedByWine = {};
+    lines.forEach(l=>{ releasedByWine[l.wineId] = l; });
+    const goodsRows = activeWinesSorted.map(w=>{
+      const line = releasedByWine[w.id];
+      return {
+        name: w.name + (w.vintage ? ` '${w.vintage}` : ''),
+        cartons: line ? line.cartons : 0,
+        totalBtls: line ? line.qty : 0,
+        remaining: w.stock.bonded
+      };
+    });
+    const releaseData = {
+      orderNo, dateStr: fmtDate(date), agent, warehouseLocation, transporter, vehicleReg, driverName, partial, goodsRows
+    };
+
     btn.textContent = 'Sending alert email…';
-    const result = await sendBatchAlertEmail(newMovements, reference ? `Release order ${reference}` : 'Stock release from Bonded');
+    const result = await sendBatchAlertEmail(newMovements, `Release order ${orderNo}`);
     newMovements.forEach(m=>m.emailStatus = result.status);
+
+    let bondedEmailResult = {status:'not_configured'};
+    if(sendEmailTo){
+      btn.textContent = 'Emailing bonded warehouse…';
+      bondedEmailResult = await sendReleaseOrderEmail(releaseData, sendEmailTo);
+    }
+
+    const parsedNo = parseInt(orderNo, 10);
+    if(!isNaN(parsedNo)) state.lastReleaseOrderNo = Math.max(state.lastReleaseOrderNo||0, parsedNo);
+
     await saveJSON(STATE_KEY, state, true);
+
+    // Download the release order document
+    try{
+      const wb = buildReleaseOrderWorkbook(releaseData);
+      XLSX.writeFile(wb, `Release-Order-${orderNo}.xlsx`);
+    }catch(e){ toast('Release logged, but the document failed to generate', 'error'); }
+
     closeModal('releaseModalBackdrop');
     renderAll();
     const totalCartons = lines.reduce((s,l)=>s+l.cartons,0);
     const totalBottles = lines.reduce((s,l)=>s+l.qty,0);
-    toast(`Release logged — ${totalCartons} cartons · ${totalBottles} bottles`, 'success');
+    let msg = `Release ${orderNo} logged — ${totalCartons} cartons · ${totalBottles} bottles`;
+    if(sendEmailTo) msg += bondedEmailResult.status==='sent' ? ' · emailed to bonded warehouse' : ' · bonded warehouse email FAILED';
+    toast(msg, bondedEmailResult.status==='failed' ? 'error' : 'success');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Log release';
@@ -1704,6 +1979,174 @@ function renderSalesSummaryCard(){
   });
 }
 
+/* ---------- Consignment tracking ---------- */
+function getOutstandingConsignmentBatches(){
+  const consignMovements = state.movements.filter(m=>m.type==='consignment');
+  const batches = computeBatches(consignMovements);
+  return batches.map(b=>{
+    const totalQty = b.movements.reduce((s,m)=>s+m.qty,0);
+    const resolvedQty = b.movements.reduce((s,m)=>s+(m.resolvedQty||0),0);
+    const outstandingQty = totalQty - resolvedQty;
+    const value = b.movements.reduce((s,m)=>{
+      const lineOutstanding = m.qty - (m.resolvedQty||0);
+      return s + lineOutstanding * (m.unitPrice||0);
+    },0);
+    return Object.assign({}, b, {totalQty, resolvedQty, outstandingQty, value});
+  }).filter(b=>b.outstandingQty>0).sort((a,b)=> (a.agreementEnd||'9999-99-99').localeCompare(b.agreementEnd||'9999-99-99'));
+}
+function daysUntil(dateStr){
+  if(!dateStr) return null;
+  const today = new Date(todayStr()+'T00:00:00');
+  const end = new Date(dateStr+'T00:00:00');
+  return Math.round((end - today) / 86400000);
+}
+function renderConsignmentCard(){
+  const card = document.getElementById('consignmentCard');
+  const batches = getOutstandingConsignmentBatches();
+  if(!batches.length){ card.style.display = 'none'; return; }
+  const totalValue = batches.reduce((s,b)=>s+b.value,0);
+  const totalBottles = batches.reduce((s,b)=>s+b.outstandingQty,0);
+  const overdueCount = batches.filter(b=>daysUntil(b.agreementEnd)<0).length;
+  card.style.display = 'block';
+  card.innerHTML = `<div class="panel" style="border-color:var(--wine);">
+    <div class="panel-head">
+      <h3>📤 On Consignment</h3>
+      <div style="font-size:12px;color:var(--ink-soft);">${batches.length} outstanding · ${formatKES(totalValue)} · ${totalBottles} bottles${overdueCount?` · <span style="color:var(--red);font-weight:600;">${overdueCount} overdue</span>`:''}</div>
+    </div>
+    <div class="panel-body">
+      <div class="table-scroll"><table>
+        <thead><tr><th>Customer</th><th>Wines</th><th>Bottles</th><th>Value</th><th>Status</th></tr></thead>
+        <tbody>${batches.map(b=>{
+          const d = daysUntil(b.agreementEnd);
+          const wineCount = b.movements.length;
+          const wineSummary = wineCount===1 ? (wineById(b.movements[0].wineId)?.name||'—') : `${wineCount} wines`;
+          let statusHtml;
+          if(d===null) statusHtml = '<span class="badge gray">No end date</span>';
+          else if(d<0) statusHtml = `<span class="badge red">Overdue ${Math.abs(d)}d</span>`;
+          else if(d<=3) statusHtml = `<span class="badge amber">${d}d left</span>`;
+          else statusHtml = `<span class="badge gray">${d}d left</span>`;
+          return `<tr class="clickable-row" data-consign-batch="${esc(b.batchId)}" style="cursor:pointer;">
+            <td><div class="wine-name">${esc(b.consignee||'—')}</div></td>
+            <td>${esc(wineSummary)}</td>
+            <td>${b.outstandingQty}</td>
+            <td>${b.value>0?formatKES(b.value):'—'}</td>
+            <td>${statusHtml}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+  card.querySelectorAll('[data-consign-batch]').forEach(tr=>{
+    tr.addEventListener('click', ()=> openConsignmentDetailModal(tr.dataset.consignBatch));
+  });
+}
+function openConsignmentDetailModal(batchId){
+  const batches = getOutstandingConsignmentBatches();
+  const b = batches.find(x=>x.batchId===batchId);
+  if(!b){ toast('This consignment is already fully resolved', 'error'); return; }
+  const d = daysUntil(b.agreementEnd);
+  document.getElementById('consignModalTitle').textContent = b.consignee || 'Consignment';
+  const statusText = d===null ? 'No end date set' : d<0 ? `Overdue by ${Math.abs(d)} day${Math.abs(d)===1?'':'s'}` : `${d} day${d===1?'':'s'} remaining`;
+  document.getElementById('consignModalSubtitle').textContent = `Out since ${fmtDate(b.date)} · Ends ${b.agreementEnd?fmtDate(b.agreementEnd):'—'} · ${statusText}${b.agreementRef?` · Ref: ${b.agreementRef}`:''}`;
+  const body = document.getElementById('consignModalBody');
+  const rows = [...b.movements].sort((x,y)=>(wineById(x.wineId)?.name||'').localeCompare(wineById(y.wineId)?.name||''));
+  body.innerHTML = `<div class="table-scroll"><table>
+    <thead><tr><th>Wine</th><th>Outstanding</th><th>Value</th><th></th></tr></thead>
+    <tbody>${rows.map(m=>{
+      const outstanding = m.qty - (m.resolvedQty||0);
+      if(outstanding<=0) return '';
+      const w = wineById(m.wineId);
+      return `<tr data-move-id="${m.id}">
+        <td>${w?esc(w.name):'—'}</td>
+        <td>${outstanding}</td>
+        <td>${m.unitPrice?formatKES(outstanding*m.unitPrice):'—'}</td>
+        <td style="white-space:nowrap;">
+          <input type="number" class="consign-resolve-qty" min="1" max="${outstanding}" value="${outstanding}" style="width:56px;">
+          <button class="btn ghost small" data-resolve-sold="${m.id}">Mark sold</button>
+          <button class="btn ghost small" data-resolve-returned="${m.id}">Mark returned</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+  body.querySelectorAll('[data-resolve-sold]').forEach(btn=>btn.addEventListener('click', ()=> resolveConsignmentLine(btn.dataset.resolveSold, 'sold', batchId)));
+  body.querySelectorAll('[data-resolve-returned]').forEach(btn=>btn.addEventListener('click', ()=> resolveConsignmentLine(btn.dataset.resolveReturned, 'returned', batchId)));
+  document.getElementById('consignmentModalBackdrop').classList.add('open');
+}
+async function resolveConsignmentLine(movementId, action, batchId){
+  if(db) await reloadFromCloud();
+  const m = state.movements.find(mv=>mv.id===movementId);
+  if(!m){ toast('This entry no longer exists', 'error'); closeModal('consignmentModalBackdrop'); return; }
+  const row = document.querySelector(`#consignModalBody tr[data-move-id="${movementId}"]`);
+  const qtyInput = row ? row.querySelector('.consign-resolve-qty') : null;
+  const outstanding = m.qty - (m.resolvedQty||0);
+  const qty = qtyInput ? Math.max(1, Math.min(outstanding, parseInt(qtyInput.value||0))) : outstanding;
+  if(qty <= 0 || qty > outstanding){ toast('Invalid quantity', 'error'); return; }
+  const w = wineById(m.wineId);
+
+  if(action==='sold'){
+    const saleMovement = {
+      id: uid(), wineId: m.wineId, type:'remove', qty, date: todayStr(),
+      note: `Resolved from consignment (${m.consignee||'—'})`,
+      location: m.location, consignee: m.consignee, fromConsignmentId: m.id,
+      createdAt: Date.now()
+    };
+    if(m.unitPrice){ saleMovement.unitPrice = m.unitPrice; saleMovement.lineTotal = m.unitPrice * qty; }
+    state.movements.push(saleMovement);
+  } else if(action==='returned'){
+    if(w) w.stock[m.location] = (w.stock[m.location]||0) + qty;
+    const returnMovement = {
+      id: uid(), wineId: m.wineId, type:'received', qty, date: todayStr(),
+      location: m.location, supplier: m.consignee ? `Returned by ${m.consignee}` : 'Consignment return',
+      reference: 'Consignment return', fromConsignmentId: m.id, createdAt: Date.now()
+    };
+    state.movements.push(returnMovement);
+  }
+
+  m.resolvedQty = (m.resolvedQty||0) + qty;
+  if(m.resolvedQty >= m.qty) m.consignmentStatus = 'resolved';
+
+  await saveJSON(STATE_KEY, state, true);
+  renderAll();
+  toast(`${qty} bottle${qty===1?'':'s'} of ${w?w.name:'wine'} marked ${action}`, 'success');
+
+  const stillOutstanding = getOutstandingConsignmentBatches().some(b=>b.batchId===batchId);
+  if(stillOutstanding) openConsignmentDetailModal(batchId);
+  else closeModal('consignmentModalBackdrop');
+}
+async function checkOverdueConsignments(){
+  if(!db) return;
+  const today = todayStr();
+  const overdue = state.movements.filter(m=>
+    m.type==='consignment' && m.consignmentStatus!=='resolved' &&
+    (m.qty - (m.resolvedQty||0)) > 0 && m.agreementEnd && m.agreementEnd < today && !m.overdueNotified
+  );
+  if(!overdue.length) return;
+  const lines = overdue.map(m=>{
+    const w = wineById(m.wineId);
+    const outstanding = m.qty - (m.resolvedQty||0);
+    return `${m.consignee||'Unknown'} — ${w?w.name:'—'} — ${outstanding} bottles — was due ${fmtDate(m.agreementEnd)}`;
+  }).join('\n');
+  const s = state.settings;
+  if(s.emailjsServiceId && s.emailjsTemplateId && s.emailjsPublicKey){
+    const payload = {
+      service_id: s.emailjsServiceId, template_id: s.emailjsTemplateId, user_id: s.emailjsPublicKey,
+      template_params: {
+        to_email: s.notifyEmail || '',
+        wine_name: lines,
+        event_type: 'Consignment agreement(s) overdue',
+        quantity: overdue.reduce((s2,m)=>s2+(m.qty-(m.resolvedQty||0)),0),
+        location: '', date: today,
+        note: 'Open Cellar Ledger \u2192 Dashboard \u2192 On Consignment to resolve these.',
+        business_name: state.businessName || 'Brut Africa'
+      }
+    };
+    if(s.emailjsPrivateKey) payload.accessToken = s.emailjsPrivateKey;
+    try{ await fetch('https://api.emailjs.com/api/v1.0/email/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); }catch(e){}
+  }
+  overdue.forEach(m=> m.overdueNotified = true);
+  await saveJSON(STATE_KEY, state, true);
+}
+
 document.getElementById('btnLogMovement').addEventListener('click', openMoveModal);
 function openMoveModal(){
   if(!state.wines.some(w=>!w.archived)){ toast('Add an active wine first (or unarchive one)', 'error'); return; }
@@ -1718,6 +2161,9 @@ function openMoveModal(){
   document.getElementById('tastingContact').value = '';
   document.getElementById('receivedSupplier').value = '';
   document.getElementById('receivedReference').value = '';
+  document.getElementById('consignCustomer').value = '';
+  document.getElementById('consignEndDate').value = '';
+  document.getElementById('consignReference').value = '';
   setMoveType('move');
   moveBackdrop.classList.add('open');
 }
@@ -1736,7 +2182,8 @@ function setMoveType(type){
   document.getElementById('invoiceFields').style.display = type==='remove' ? 'block' : 'none';
   document.getElementById('tastingContactField').style.display = type==='tasting' ? 'block' : 'none';
   document.getElementById('receivedFields').style.display = type==='received' ? 'block' : 'none';
-  toggleMoveLinePriceFields(type==='remove');
+  document.getElementById('consignmentFields').style.display = type==='consignment' ? 'block' : 'none';
+  toggleMoveLinePriceFields(type==='remove' || type==='consignment');
   moveBackdrop.dataset.type = type;
   const label = document.getElementById('fromField').querySelector('label');
   label.textContent = type==='move' ? 'From' : type==='received' ? 'Received into' : 'Location';
@@ -1790,7 +2237,7 @@ async function saveMovementInner(){
       }
     }
     lines.push({wine:w, qty, unitLabel: unit==='case' ? `${rawQty} case${rawQty===1?'':'s'}` : `${rawQty} bottle${rawQty===1?'':'s'}`,
-      unitPrice: type==='remove' ? (parseFloat(el.querySelector('.line-price-input').value) || 0) : 0});
+      unitPrice: (type==='remove'||type==='consignment') ? (parseFloat(el.querySelector('.line-price-input').value) || 0) : 0});
   }
   // Guard against the same wine appearing twice and jointly exceeding stock (not relevant for receiving)
   if(!isIncrease){
@@ -1830,6 +2277,11 @@ async function saveMovementInner(){
   const tastingContact = document.getElementById('tastingContact').value.trim();
   const receivedSupplier = document.getElementById('receivedSupplier').value.trim();
   const receivedReference = document.getElementById('receivedReference').value.trim();
+  const consignCustomer = document.getElementById('consignCustomer').value.trim();
+  const consignEndDate = document.getElementById('consignEndDate').value;
+  const consignReference = document.getElementById('consignReference').value.trim();
+  if(type==='consignment' && !consignCustomer){ toast('Enter who this consignment is going to', 'error'); return; }
+  if(type==='consignment' && !consignEndDate){ toast('Set an agreement end date', 'error'); return; }
   const batchId = uid();
   const newMovements = [];
   for(const line of lines){
@@ -1843,6 +2295,16 @@ async function saveMovementInner(){
       movement.location = from;
       if(receivedSupplier) movement.supplier = receivedSupplier;
       if(receivedReference) movement.reference = receivedReference;
+    } else if(type==='consignment'){
+      w.stock[from] -= line.qty;
+      movement.location = from;
+      movement.consignee = consignCustomer;
+      movement.agreementEnd = consignEndDate;
+      if(consignReference) movement.agreementRef = consignReference;
+      movement.resolvedQty = 0;
+      movement.consignmentStatus = 'outstanding';
+      movement.overdueNotified = false;
+      if(line.unitPrice > 0){ movement.unitPrice = line.unitPrice; movement.lineTotal = line.unitPrice * line.qty; }
     } else {
       w.stock[from] -= line.qty;
       movement.location = from;
@@ -1892,12 +2354,20 @@ function fileToBase64(file){
 async function deleteMovement(id){
   const m = state.movements.find(mv=>mv.id===id);
   if(!m) return;
+  if(m.type==='consignment' && (m.resolvedQty||0) > 0){
+    toast('This consignment has already been partly resolved (sold/returned) — resolve the rest from the On Consignment card instead of deleting it', 'error');
+    return;
+  }
   const w = wineById(m.wineId);
   const label = w ? w.name : 'this wine';
   if(!confirm(`Delete this movement for "${label}"? Stock at all locations will be adjusted back automatically.`)) return;
   if(db) await reloadFromCloud();
   const freshM = state.movements.find(mv=>mv.id===id);
   if(!freshM){ toast('That movement was already removed', 'error'); return; }
+  if(freshM.type==='consignment' && (freshM.resolvedQty||0) > 0){
+    toast('This consignment has already been partly resolved — resolve the rest instead of deleting it', 'error');
+    return;
+  }
   const freshW = wineById(freshM.wineId);
   if(freshW){
     if(freshM.type==='move'){ freshW.stock[freshM.to] -= freshM.qty; freshW.stock[freshM.from] += freshM.qty; }
@@ -1922,6 +2392,10 @@ const editMoveBackdrop = document.getElementById('editMoveModalBackdrop');
 function openEditMoveModal(id){
   const m = state.movements.find(mv=>mv.id===id);
   if(!m) return;
+  if(m.type==='consignment'){
+    toast('Consignments can\'t be edited directly — resolve them (sold/returned) from the On Consignment card on the Dashboard', 'error');
+    return;
+  }
   document.getElementById('editMoveId').value = m.id;
   document.getElementById('editMoveWine').innerHTML = wineOptionsHtml(m.wineId);
   document.getElementById('editMoveWine').value = m.wineId;
@@ -2152,6 +2626,10 @@ function renderSettings(){
   const configured = state.settings.emailjsServiceId && state.settings.emailjsTemplateId && state.settings.emailjsPublicKey;
   document.getElementById('emailStatusDot').className = 'status-dot ' + (configured?'on':'off');
   document.getElementById('emailStatusText').textContent = configured ? 'Configured — alerts send automatically' : 'Not configured';
+  document.getElementById('setBondedAgent').value = state.settings.bondedAgent || '';
+  document.getElementById('setBondedLocation').value = state.settings.bondedLocation || '';
+  document.getElementById('setDefaultTransporter').value = state.settings.defaultTransporter || '';
+  document.getElementById('setBondedEmail').value = state.settings.bondedEmail || '';
 }
 document.getElementById('btnSaveSettings').addEventListener('click', async ()=>{
   state.businessName = document.getElementById('setBizName').value.trim() || 'Brut Africa';
@@ -2164,6 +2642,15 @@ document.getElementById('btnSaveSettings').addEventListener('click', async ()=>{
   await saveJSON(STATE_KEY, state, true);
   renderSettings();
   toast('Settings saved', 'success');
+});
+document.getElementById('btnSaveReleaseDefaults').addEventListener('click', async ()=>{
+  state.settings.bondedAgent = document.getElementById('setBondedAgent').value.trim();
+  state.settings.bondedLocation = document.getElementById('setBondedLocation').value.trim();
+  state.settings.defaultTransporter = document.getElementById('setDefaultTransporter').value.trim();
+  state.settings.bondedEmail = document.getElementById('setBondedEmail').value.trim();
+  await saveJSON(STATE_KEY, state, true);
+  renderSettings();
+  toast('Release order defaults saved', 'success');
 });
 
 /* ---------- Full backup ---------- */
@@ -2247,18 +2734,18 @@ async function generateAndDownloadExport(month){
   const ledger = rows.map(m=>{
     const w = wineById(m.wineId) || {};
     const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
-    const custName = inv ? (inv.customer||'') : (m.type==='tasting' ? (m.contact||'') : (m.supplier||''));
+    const custName = inv ? (inv.customer||'') : (m.consignee ? m.consignee : (m.type==='tasting' ? (m.contact||'') : (m.supplier||'')));
     return {
       Date: m.date,
       Wine: w.name || '',
       Vintage: w.vintage || '',
-      Event: m.isRelease ? 'Release' : m.type==='move' ? 'Transfer' : m.type==='received' ? 'Received' : m.type==='remove' ? 'Sold / removed' : 'Tasting',
+      Event: m.isRelease ? 'Release' : m.type==='move' ? 'Transfer' : m.type==='received' ? 'Received' : m.type==='remove' ? 'Sold / removed' : m.type==='consignment' ? 'On consignment' : 'Tasting',
       Quantity: m.qty,
       'Unit Price (KES)': m.unitPrice || '',
       'Line Total (KES)': m.lineTotal || '',
       From: m.type==='move' ? locLabel(m.from) : locLabel(m.location),
       To: m.type==='move' ? locLabel(m.to) : '',
-      'Invoice # / Reference': inv ? (inv.number||'') : (m.reference||''),
+      'Invoice # / Reference': inv ? (inv.number||'') : (m.agreementRef || m.reference || ''),
       'Customer / Supplier': custName,
       Note: m.note || '',
       'Email Alert': m.emailStatus || ''
@@ -2419,7 +2906,7 @@ function computeCustomerGroups(){
   state.movements.forEach(m=>{
     if(m.type==='remove'){
       const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
-      const rawName = (inv && inv.customer) ? inv.customer.trim() : '';
+      const rawName = (inv && inv.customer) ? inv.customer.trim() : (m.consignee ? m.consignee.trim() : '');
       const isFallback = !rawName;
       const name = rawName || 'No customer recorded';
       const key = 'cust:' + name.toLowerCase();
