@@ -631,8 +631,12 @@
         <div id="moveLines"></div>
         <div style="display:flex;gap:8px;align-items:flex-end;margin-top:6px;flex-wrap:wrap;">
           <button class="btn secondary small" id="btnAddMoveLine" type="button">+ Add another wine</button>
-          <div class="field" style="margin:0;max-width:120px;"><label style="font-size:11px;">Quick fill</label><input id="moveQuickFillQty" type="number" min="0" value="1" style="width:100%;"></div>
+          <div class="field" style="margin:0;max-width:120px;"><label style="font-size:11px;">Quick fill qty</label><input id="moveQuickFillQty" type="number" min="0" value="1" style="width:100%;"></div>
           <button class="btn secondary small" id="btnMoveQuickFillAll" type="button">Set all lines to this</button>
+        </div>
+        <div id="moveQuickFillPriceRow" style="display:none;align-items:flex-end;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <div class="field" style="margin:0;max-width:140px;"><label style="font-size:11px;">Quick fill price (KES)</label><input id="moveQuickFillPrice" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00"></div>
+          <button class="btn secondary small" id="btnMoveQuickFillPriceAll" type="button">Set all lines to this price</button>
         </div>
       </div>
 
@@ -1099,6 +1103,38 @@ function renderDashboard(){
   if(salesBin){
     salesBin.addEventListener('click', ()=> goto('depleted'));
     salesBin.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); goto('depleted'); } });
+  }
+
+  // On Consignment card, same row, same style
+  const consignBatches = getOutstandingConsignmentBatches();
+  if(consignBatches.length){
+    const consignBottles = consignBatches.reduce((s,b)=>s+b.outstandingQty,0);
+    const consignValue = consignBatches.reduce((s,b)=>s+b.value,0);
+    const overdueBottles = consignBatches.filter(b=>daysUntil(b.agreementEnd)<0).reduce((s,b)=>s+b.outstandingQty,0);
+    const overduePct = consignBottles>0 ? Math.round((overdueBottles/consignBottles)*100) : 0;
+    const consignCard = document.createElement('div');
+    consignCard.className = 'bin';
+    consignCard.id = 'consignBinCard';
+    consignCard.setAttribute('role','button');
+    consignCard.setAttribute('tabindex','0');
+    consignCard.style.borderColor = 'var(--wine)';
+    consignCard.innerHTML = `
+      <div class="loc-label" style="color:var(--wine);">Consignment · tap for details</div>
+      <div class="loc-name">📤 On Consignment</div>
+      <div class="gauge"><div class="gauge-fill" style="width:${overduePct}%;background:linear-gradient(90deg,var(--red),#C15A5A);"></div></div>
+      <div class="bin-stats">
+        <div class="count">${consignBottles}<small>bottles</small></div>
+        <div class="skus">${consignBatches.length} customer${consignBatches.length===1?'':'s'} · ${formatKES(consignValue)}</div>
+      </div>
+      ${overdueBottles>0 ? `<div style="margin-top:6px;font-size:12px;color:var(--red);font-weight:600;">⚠ ${overdueBottles} bottle${overdueBottles===1?'':'s'} overdue</div>` : `<div style="margin-top:6px;font-size:12px;color:var(--ink-soft);">All within agreement</div>`}
+    `;
+    row.appendChild(consignCard);
+    const goToConsignCard = ()=>{
+      goto('dashboard');
+      document.getElementById('consignmentCard').scrollIntoView({behavior:'smooth', block:'start'});
+    };
+    consignCard.addEventListener('click', goToConsignCard);
+    consignCard.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); goToConsignCard(); } });
   }
 
   const feed = document.getElementById('recentActivityFeed');
@@ -1600,6 +1636,7 @@ function refreshAllLineStocks(){
 }
 function toggleMoveLinePriceFields(show){
   document.querySelectorAll('.move-line .line-price').forEach(el=>{ el.style.display = show ? 'block' : 'none'; });
+  document.getElementById('moveQuickFillPriceRow').style.display = show ? 'flex' : 'none';
 }
 document.getElementById('btnAddMoveLine').addEventListener('click', addMoveLine);
 document.getElementById('btnMoveQuickFillAll').addEventListener('click', ()=>{
@@ -1607,6 +1644,13 @@ document.getElementById('btnMoveQuickFillAll').addEventListener('click', ()=>{
   const lineQtyInputs = document.querySelectorAll('.move-line .line-qty');
   if(!lineQtyInputs.length){ toast('Add a wine line first', 'error'); return; }
   lineQtyInputs.forEach(inp=>{ inp.value = qty; });
+});
+document.getElementById('btnMoveQuickFillPriceAll').addEventListener('click', ()=>{
+  const price = Math.max(0, parseFloat(document.getElementById('moveQuickFillPrice').value||0));
+  const linePriceInputs = document.querySelectorAll('.move-line .line-price-input');
+  if(!linePriceInputs.length){ toast('Add a wine line first', 'error'); return; }
+  linePriceInputs.forEach(inp=>{ inp.value = price; });
+  toast(`Price set on ${linePriceInputs.length} wine${linePriceInputs.length===1?'':'s'}`, 'success');
 });
 
 document.getElementById('btnQuickMove').addEventListener('click', openMoveModal);
