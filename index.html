@@ -880,11 +880,12 @@
       </div>
       <div class="field">
         <label>Event type</label>
-        <div class="radio-cards" id="editMoveTypeCards" style="grid-template-columns:repeat(2,1fr);">
+        <div class="radio-cards" id="editMoveTypeCards" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));">
           <label class="radio-card" data-type="move"><input type="radio" name="editMoveType" value="move">Transfer</label>
           <label class="radio-card" data-type="received"><input type="radio" name="editMoveType" value="received">Received</label>
           <label class="radio-card" data-type="remove"><input type="radio" name="editMoveType" value="remove">Sold / removed</label>
           <label class="radio-card" data-type="tasting"><input type="radio" name="editMoveType" value="tasting">Tasting</label>
+          <label class="radio-card" data-type="consignment"><input type="radio" name="editMoveType" value="consignment">Consignment</label>
         </div>
       </div>
       <div class="field-row" id="editFromToRow">
@@ -905,6 +906,10 @@
       <div class="field-row" id="editReceivedFields" style="display:none;">
         <div class="field"><label>Supplier</label><input id="editReceivedSupplier" placeholder="e.g. Domaine des Loges"></div>
         <div class="field"><label>Reference / PO number</label><input id="editReceivedReference" placeholder="e.g. Shipment ref"></div>
+      </div>
+      <div class="field-row" id="editConsignFields" style="display:none;">
+        <div class="field"><label>Customer / Company</label><input id="editConsignCustomer" placeholder="Who has this stock?"></div>
+        <div class="field"><label>Agreement ends</label><input id="editConsignEndDate" type="date"></div>
       </div>
       <div class="hint">Stock at all locations will be automatically corrected to match your change. This won't resend an alert email.</div>
     </div>
@@ -2436,8 +2441,8 @@ const editMoveBackdrop = document.getElementById('editMoveModalBackdrop');
 function openEditMoveModal(id){
   const m = state.movements.find(mv=>mv.id===id);
   if(!m) return;
-  if(m.type==='consignment'){
-    toast('Consignments can\'t be edited directly — resolve them (sold/returned) from the On Consignment card on the Dashboard', 'error');
+  if(m.type==='consignment' && (m.resolvedQty||0) > 0){
+    toast('This consignment has already been partly resolved (sold/returned) — resolve the rest from the On Consignment card instead of editing it', 'error');
     return;
   }
   document.getElementById('editMoveId').value = m.id;
@@ -2450,6 +2455,8 @@ function openEditMoveModal(id){
   document.getElementById('editUnitPrice').value = m.unitPrice || '';
   document.getElementById('editReceivedSupplier').value = m.supplier || '';
   document.getElementById('editReceivedReference').value = m.reference || '';
+  document.getElementById('editConsignCustomer').value = m.consignee || '';
+  document.getElementById('editConsignEndDate').value = m.agreementEnd || '';
   setEditMoveType(m.type);
   if(m.type==='move'){
     document.getElementById('editMoveFrom').value = m.from;
@@ -2469,8 +2476,9 @@ function setEditMoveType(type){
   document.getElementById('editFromToRow').style.gridTemplateColumns = type==='move' ? '1fr 1fr' : '1fr';
   document.getElementById('editToField').style.display = type==='move' ? 'block' : 'none';
   document.getElementById('editTastingContactField').style.display = type==='tasting' ? 'block' : 'none';
-  document.getElementById('editPriceField').style.display = type==='remove' ? 'block' : 'none';
+  document.getElementById('editPriceField').style.display = (type==='remove'||type==='consignment') ? 'block' : 'none';
   document.getElementById('editReceivedFields').style.display = type==='received' ? 'grid' : 'none';
+  document.getElementById('editConsignFields').style.display = type==='consignment' ? 'grid' : 'none';
   editMoveBackdrop.dataset.type = type;
   document.getElementById('editFromField').querySelector('label').textContent = type==='move' ? 'From' : type==='received' ? 'Received into' : 'Location';
 }
@@ -2554,13 +2562,29 @@ document.getElementById('btnSaveEditMove').addEventListener('click', async ()=>{
     delete m.supplier;
     delete m.reference;
   }
-  if(type==='remove'){
+  if(type==='remove'||type==='consignment'){
     const price = parseFloat(document.getElementById('editUnitPrice').value) || 0;
     if(price > 0){ m.unitPrice = price; m.lineTotal = price * qty; }
     else { delete m.unitPrice; delete m.lineTotal; }
   } else {
     delete m.unitPrice;
     delete m.lineTotal;
+  }
+  if(type==='consignment'){
+    const consignee = document.getElementById('editConsignCustomer').value.trim();
+    const endDate = document.getElementById('editConsignEndDate').value;
+    m.consignee = consignee;
+    m.agreementEnd = endDate;
+    if(m.resolvedQty===undefined) m.resolvedQty = 0;
+    if(!m.consignmentStatus) m.consignmentStatus = 'outstanding';
+    if(m.overdueNotified===undefined) m.overdueNotified = false;
+  } else {
+    delete m.consignee;
+    delete m.agreementEnd;
+    delete m.agreementRef;
+    delete m.resolvedQty;
+    delete m.consignmentStatus;
+    delete m.overdueNotified;
   }
 
   await saveJSON(STATE_KEY, state, true);
