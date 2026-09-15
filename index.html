@@ -303,7 +303,6 @@
     <button data-tab="dashboard" class="active">🏠 Dashboard</button>
     <button data-tab="wines">🍷 Wines</button>
     <button data-tab="movements">📋 Activity Log</button>
-    <button data-tab="invoices">🧾 Invoices</button>
     <button data-tab="depleted">👥 Customers</button>
     <button data-tab="export">📊 Export</button>
     <button data-tab="settings">⚙️ Settings</button>
@@ -314,10 +313,14 @@
     <section id="tab-dashboard" class="active">
       <div class="section-head">
         <div><h2>Cellar overview</h2><p>Live stock across all three locations</p></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn secondary" id="btnOpenRelease">🚚 Log a release</button>
-          <button class="btn" id="btnQuickMove">Log a movement</button>
-        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">
+        <button class="btn" data-action-type="remove">📦 Log a sale</button>
+        <button class="btn" data-action-type="tasting">🍷 Log a tasting</button>
+        <button class="btn secondary" data-action-type="move">🔄 Transfer stock</button>
+        <button class="btn secondary" data-action-type="received">📥 Receive stock</button>
+        <button class="btn secondary" data-action-type="consignment">📤 Send on consignment</button>
+        <button class="btn secondary" id="btnOpenRelease">🚚 Log a release</button>
       </div>
       <div class="cellar-row" id="binRow"></div>
       <div id="lastReleaseCard" style="display:none;"></div>
@@ -365,7 +368,13 @@
     <section id="tab-movements">
       <div class="section-head">
         <div><h2>📋 Activity log</h2><p>Every move, sale, receipt, and tasting pour — tap any row to see the details</p></div>
-        <button class="btn" id="btnLogMovement">+ Log movement</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        <button class="btn secondary small" data-action-type="remove">📦 Log a sale</button>
+        <button class="btn secondary small" data-action-type="tasting">🍷 Log a tasting</button>
+        <button class="btn secondary small" data-action-type="move">🔄 Transfer stock</button>
+        <button class="btn secondary small" data-action-type="received">📥 Receive stock</button>
+        <button class="btn secondary small" data-action-type="consignment">📤 Send on consignment</button>
       </div>
       <div class="panel">
         <div class="panel-body" style="padding-bottom:12px;">
@@ -380,21 +389,6 @@
           <div class="table-scroll"><table>
             <thead><tr><th>Date</th><th>Wine(s)</th><th>Event</th><th>Qty</th><th>Route</th><th>Invoice / Ref</th><th>Email</th><th></th></tr></thead>
             <tbody id="movementsBody"></tbody>
-          </table></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- INVOICES -->
-    <section id="tab-invoices">
-      <div class="section-head">
-        <div><h2>Invoices</h2><p>Attached whenever wine goes out to a customer</p></div>
-      </div>
-      <div class="panel">
-        <div class="panel-body">
-          <div class="table-scroll"><table>
-            <thead><tr><th>Date</th><th>Invoice #</th><th>Customer</th><th>Wine</th><th>Qty</th><th>File</th></tr></thead>
-            <tbody id="invoicesBody"></tbody>
           </table></div>
         </div>
       </div>
@@ -601,9 +595,9 @@
 <!-- Movement Modal -->
 <div class="modal-backdrop" id="moveModalBackdrop">
   <div class="modal" style="max-width:640px;">
-    <div class="modal-head"><h3>Log movement</h3><button class="modal-close" data-close="moveModalBackdrop">&times;</button></div>
+    <div class="modal-head"><h3 id="moveModalTitle">Log movement</h3><button class="modal-close" data-close="moveModalBackdrop">&times;</button></div>
     <div class="modal-body">
-      <div class="field">
+      <div class="field" id="moveTypePickerField">
         <label>Event type</label>
         <div class="radio-cards detailed-group" id="moveTypeCards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
           <label class="radio-card detailed active" data-type="move"><input type="radio" name="moveType" value="move" checked><span class="rc-title">🔄 Transfer</span><span class="rc-caption">Moving stock between your own Bonded/Karen/Westlands locations</span></label>
@@ -633,10 +627,6 @@
           <button class="btn secondary small" id="btnAddMoveLine" type="button">+ Add another wine</button>
           <div class="field" style="margin:0;max-width:120px;"><label style="font-size:11px;">Quick fill qty</label><input id="moveQuickFillQty" type="number" min="0" value="1" style="width:100%;"></div>
           <button class="btn secondary small" id="btnMoveQuickFillAll" type="button">Set all lines to this</button>
-        </div>
-        <div id="moveQuickFillPriceRow" style="display:none;align-items:flex-end;gap:8px;margin-top:8px;flex-wrap:wrap;">
-          <div class="field" style="margin:0;max-width:140px;"><label style="font-size:11px;">Quick fill price (KES)</label><input id="moveQuickFillPrice" type="number" min="0" step="0.01" style="width:100%;" placeholder="0.00"></div>
-          <button class="btn secondary small" id="btnMoveQuickFillPriceAll" type="button">Set all lines to this price</button>
         </div>
       </div>
 
@@ -983,6 +973,16 @@ async function reloadFromCloud(){
     state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}, pendingExportMonth:'', lastAutoNotifiedMonth:'', lastReleaseOrderNo:0}, loadedState);
     state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:''}, state.settings||{});
   }
+  // Normalize stock numbers at the source — a single malformed/missing value here
+  // was the cause of "NaN" appearing on location totals.
+  state.wines.forEach(w=>{
+    const s = w.stock || {};
+    w.stock = {
+      bonded: Number(s.bonded) || 0,
+      karen: Number(s.karen) || 0,
+      westlands: Number(s.westlands) || 0
+    };
+  });
   invoicesIndex = await loadJSON(INVOICE_INDEX_KEY, true, []);
   document.getElementById('bizName').textContent = state.businessName || 'Brut Africa';
   renderAll();
@@ -1030,6 +1030,7 @@ function fmtDate(d){ try{ return new Date(d+'T00:00:00').toLocaleDateString('en-
 function wineById(id){ return state.wines.find(w=>w.id===id); }
 function totalStock(w){ return w.stock.bonded + w.stock.karen + w.stock.westlands; }
 function cartonLabel(qty){
+  qty = Number(qty) || 0;
   const cartons = Math.floor(Math.abs(qty) / CASE_SIZE);
   const rem = Math.abs(qty) % CASE_SIZE;
   const sign = qty < 0 ? '-' : '';
@@ -1342,9 +1343,13 @@ function openBatchModal(batchId, sourceMovements){
   const route = b.type==='move' ? `${locLabel(b.from)} → ${locLabel(b.to)}` : locLabel(b.location);
   document.getElementById('batchModalTitle').textContent = `${typeLabel} — ${fmtDate(b.date)}`;
   const parts = [route];
+  let invForClick = null;
   if(b.type==='remove'){
     const inv = b.invoiceId ? invoicesIndex.find(i=>i.id===b.invoiceId) : null;
-    if(inv && (inv.number||inv.customer)) parts.push([inv.number, inv.customer].filter(Boolean).join(' · '));
+    if(inv && (inv.number||inv.customer)){
+      parts.push([inv.number, inv.customer].filter(Boolean).join(' · ') + (inv.fileName ? ' 📎' : ''));
+      if(inv.fileName) invForClick = inv;
+    }
     const revenue = b.movements.reduce((s,m)=>s+(m.lineTotal||0),0);
     if(revenue>0) parts.push(formatKES(revenue));
   }
@@ -1352,7 +1357,17 @@ function openBatchModal(batchId, sourceMovements){
   if(b.type==='received' && (b.supplier||b.reference)) parts.push([b.supplier,b.reference].filter(Boolean).join(' · '));
   const emailLabel = b.emailStatus==='sent' ? '✓ Alert sent' : b.emailStatus==='failed' ? '✕ Alert failed' : b.emailStatus==='not_configured' ? 'Alert not configured' : '';
   if(emailLabel) parts.push(emailLabel);
-  document.getElementById('batchModalSubtitle').textContent = parts.join(' · ');
+  const subtitleEl = document.getElementById('batchModalSubtitle');
+  subtitleEl.textContent = parts.join(' · ');
+  if(invForClick){
+    subtitleEl.style.cursor = 'pointer';
+    subtitleEl.title = 'Tap to view the attached invoice';
+    subtitleEl.onclick = ()=> viewInvoice(invForClick.id);
+  } else {
+    subtitleEl.style.cursor = '';
+    subtitleEl.title = '';
+    subtitleEl.onclick = null;
+  }
 
   const tableWrap = document.getElementById('batchModalWinesTable');
   const rows = [...b.movements].sort((x,y)=> (wineById(x.wineId)?.name||'').localeCompare(wineById(y.wineId)?.name||''));
@@ -1477,32 +1492,6 @@ document.getElementById('btnClearMovementFilter').addEventListener('click', ()=>
 });
 
 /* ---------- Render: Invoices ---------- */
-function renderInvoices(){
-  const body = document.getElementById('invoicesBody');
-  if(!invoicesIndex.length){
-    body.innerHTML = `<tr class="empty-row"><td colspan="6">No invoices attached yet — attach one when you log a "Sold / removed" movement.</td></tr>`;
-    return;
-  }
-  const rows = [...invoicesIndex].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
-  body.innerHTML = rows.map(inv=>{
-    const ids = inv.movementIds && inv.movementIds.length ? inv.movementIds : (inv.movementId ? [inv.movementId] : []);
-    const movs = ids.map(id=>state.movements.find(mv=>mv.id===id)).filter(Boolean);
-    const wineLines = movs.map(m=>{
-      const w = wineById(m.wineId);
-      return `${w?esc(w.name):'—'} <span class="wine-sub">(${m.qty})</span>`;
-    });
-    const totalQty = movs.reduce((s,m)=>s+m.qty,0);
-    return `<tr>
-      <td>${fmtDate(inv.date)}</td>
-      <td class="mono">${esc(inv.number||'—')}</td>
-      <td>${esc(inv.customer||'—')}</td>
-      <td>${wineLines.length ? wineLines.join('<br>') : '—'}</td>
-      <td>${totalQty || '—'}</td>
-      <td>${inv.fileName ? `<span class="filelink" data-view-invoice="${inv.id}">${esc(inv.fileName)}</span>` : '—'}</td>
-    </tr>`;
-  }).join('');
-  body.querySelectorAll('[data-view-invoice]').forEach(el=>el.addEventListener('click', ()=>viewInvoice(el.dataset.viewInvoice)));
-}
 async function viewInvoice(id){
   try{
     const data = await loadJSON('invoice:'+id, true, null);
@@ -1625,7 +1614,8 @@ function addMoveLine(){
     if(document.querySelectorAll('.move-line').length <= 1){ toast('At least one wine is needed', 'error'); return; }
     div.remove();
   });
-  div.querySelector('.line-price').style.display = currentMoveType()==='remove' ? 'block' : 'none';
+  const t = currentMoveType();
+  div.querySelector('.line-price').style.display = (t==='remove'||t==='consignment') ? 'block' : 'none';
   updateLineStock(div);
 }
 function updateLineStock(lineEl){
@@ -1641,7 +1631,6 @@ function refreshAllLineStocks(){
 }
 function toggleMoveLinePriceFields(show){
   document.querySelectorAll('.move-line .line-price').forEach(el=>{ el.style.display = show ? 'block' : 'none'; });
-  document.getElementById('moveQuickFillPriceRow').style.display = show ? 'flex' : 'none';
 }
 document.getElementById('btnAddMoveLine').addEventListener('click', addMoveLine);
 document.getElementById('btnMoveQuickFillAll').addEventListener('click', ()=>{
@@ -1650,15 +1639,6 @@ document.getElementById('btnMoveQuickFillAll').addEventListener('click', ()=>{
   if(!lineQtyInputs.length){ toast('Add a wine line first', 'error'); return; }
   lineQtyInputs.forEach(inp=>{ inp.value = qty; });
 });
-document.getElementById('btnMoveQuickFillPriceAll').addEventListener('click', ()=>{
-  const price = Math.max(0, parseFloat(document.getElementById('moveQuickFillPrice').value||0));
-  const linePriceInputs = document.querySelectorAll('.move-line .line-price-input');
-  if(!linePriceInputs.length){ toast('Add a wine line first', 'error'); return; }
-  linePriceInputs.forEach(inp=>{ inp.value = price; });
-  toast(`Price set on ${linePriceInputs.length} wine${linePriceInputs.length===1?'':'s'}`, 'success');
-});
-
-document.getElementById('btnQuickMove').addEventListener('click', openMoveModal);
 
 /* ---------- Release Order ---------- */
 function updateReleaseRunningTotal(){
@@ -1936,6 +1916,7 @@ function renderLastReleaseCard(){
 }
 
 function formatKES(n){
+  n = Number(n) || 0;
   return 'KES ' + Math.round(n).toLocaleString('en-KE');
 }
 function renderSalesSummaryCard(){
@@ -2047,6 +2028,7 @@ function daysUntil(dateStr){
   if(!dateStr) return null;
   const today = new Date(todayStr()+'T00:00:00');
   const end = new Date(dateStr+'T00:00:00');
+  if(isNaN(end.getTime())) return null;
   return Math.round((end - today) / 86400000);
 }
 function renderConsignmentCard(){
@@ -2196,7 +2178,13 @@ async function checkOverdueConsignments(){
   await saveJSON(STATE_KEY, state, true);
 }
 
-document.getElementById('btnLogMovement').addEventListener('click', openMoveModal);
+const MOVE_TYPE_TITLES = {
+  move: '🔄 Transfer stock',
+  received: '📥 Receive stock',
+  remove: '📦 Log a sale',
+  tasting: '🍷 Log a tasting',
+  consignment: '📤 Send on consignment'
+};
 function openMoveModal(){
   if(!state.wines.some(w=>!w.archived)){ toast('Add an active wine first (or unarchive one)', 'error'); return; }
   document.getElementById('moveLines').innerHTML = '';
@@ -2213,9 +2201,20 @@ function openMoveModal(){
   document.getElementById('consignCustomer').value = '';
   document.getElementById('consignEndDate').value = '';
   document.getElementById('consignReference').value = '';
+  document.getElementById('moveTypePickerField').style.display = 'block';
+  document.getElementById('moveModalTitle').textContent = 'Log movement';
   setMoveType('move');
   moveBackdrop.classList.add('open');
 }
+function openMoveModalWithType(type){
+  openMoveModal();
+  document.getElementById('moveTypePickerField').style.display = 'none';
+  document.getElementById('moveModalTitle').textContent = MOVE_TYPE_TITLES[type] || 'Log movement';
+  setMoveType(type);
+}
+document.querySelectorAll('[data-action-type]').forEach(btn=>{
+  btn.addEventListener('click', ()=> openMoveModalWithType(btn.dataset.actionType));
+});
 document.querySelectorAll('#moveTypeCards .radio-card').forEach(card=>{
   card.addEventListener('click', ()=> setMoveType(card.dataset.type));
 });
@@ -2518,6 +2517,10 @@ document.getElementById('btnSaveEditMove').addEventListener('click', async ()=>{
 
   if(!newWine){ toast('Choose a wine', 'error'); return; }
   if(type==='move' && from===to){ toast('From and To must differ', 'error'); return; }
+  if(type==='consignment'){
+    if(!document.getElementById('editConsignCustomer').value.trim()){ toast('Enter who this consignment is going to', 'error'); return; }
+    if(!document.getElementById('editConsignEndDate').value){ toast('Set an agreement end date', 'error'); return; }
+  }
 
   reverseOld(); // temporarily undo the original effect so we can validate cleanly
 
@@ -3039,13 +3042,17 @@ function openCustomerDetailModal(key){
       const w = wineById(m.wineId);
       const badge = m.type==='remove' ? '<span class="badge red">Sold</span>' : '<span class="badge amber">Tasting</span>';
       let ref;
-      if(m.type==='remove'){ const inv = m.invoiceId?invoicesIndex.find(i=>i.id===m.invoiceId):null; ref = inv?esc(inv.number||'—'):'—'; }
+      if(m.type==='remove'){
+        const inv = m.invoiceId?invoicesIndex.find(i=>i.id===m.invoiceId):null;
+        ref = inv ? `<span class="filelink" data-view-inv="${inv.id}">${esc(inv.number||'View invoice')}${inv.fileName?' 📎':''}</span>` : '—';
+      }
       else { ref = esc(m.note||'—'); }
       const priceCell = m.unitPrice ? formatKES(m.unitPrice) : '—';
       const totalCell = m.lineTotal ? formatKES(m.lineTotal) : '—';
       return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${badge}</td><td>${m.qty}</td><td>${priceCell}</td><td>${totalCell}</td><td>${locLabel(m.location)}</td><td>${ref}</td></tr>`;
     }).join('')}
   </tbody></table></div>`;
+  body.querySelectorAll('[data-view-inv]').forEach(el=>el.addEventListener('click', ()=>viewInvoice(el.dataset.viewInv)));
   document.getElementById('customerModalBackdrop').classList.add('open');
 }
 function renderDepletedDetail(filter){
@@ -3081,7 +3088,6 @@ function renderAll(){
   renderDashboard();
   renderWines();
   renderMovements();
-  renderInvoices();
   renderDepleted();
   renderSettings();
   updateExportBanners();
