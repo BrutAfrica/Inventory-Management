@@ -397,38 +397,15 @@
     <!-- DEPLETED (SOLD & TASTED) -->
     <section id="tab-depleted">
       <div class="section-head">
-        <div><h2>👥 Customers</h2><p>Everyone you've sold to or hosted a tasting for — tap a name to see exactly what they took</p></div>
+        <div><h2>👥 Customers</h2><p>Your customer list — tap a name to see everything they've bought</p></div>
+        <button class="btn" id="btnAddCustomer">+ Add customer</button>
       </div>
       <div class="panel">
-        <div class="panel-head"><h3>By customer</h3></div>
         <div class="panel-body">
+          <div class="field" style="max-width:280px;margin-bottom:12px;"><label>Search</label><input id="customerSearch" placeholder="Customer name…"></div>
           <div class="table-scroll"><table>
-            <thead><tr><th>Customer</th><th>Wines</th><th>Bottles</th><th>Revenue</th><th>Last activity</th></tr></thead>
+            <thead><tr><th>Customer</th><th>Bottles bought</th><th>Revenue</th><th>Last activity</th><th></th></tr></thead>
             <tbody id="depletedCustomerBody"></tbody>
-          </table></div>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-head">
-          <h3>Full record</h3>
-          <div id="depletedFilterBtns" style="display:flex;gap:6px;">
-            <button class="btn secondary small filter-btn active" data-filter="all">All</button>
-            <button class="btn secondary small filter-btn" data-filter="sold">Sold only</button>
-            <button class="btn secondary small filter-btn" data-filter="tasting">Tasting only</button>
-          </div>
-        </div>
-        <div class="panel-body" style="padding-bottom:12px;">
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-            <div class="field" style="flex:1;min-width:160px;margin:0;"><label>Search wine</label><input id="depletedSearch" placeholder="Wine name…"></div>
-            <div class="field" style="min-width:140px;margin:0;"><label>From date</label><input id="depletedDateFrom" type="date"></div>
-            <div class="field" style="min-width:140px;margin:0;"><label>To date</label><input id="depletedDateTo" type="date"></div>
-            <button class="btn secondary small" id="btnClearDepletedFilter" type="button">Clear</button>
-          </div>
-        </div>
-        <div class="panel-body" style="padding-top:0;">
-          <div class="table-scroll"><table>
-            <thead><tr><th>Date</th><th>Wine(s)</th><th>Event</th><th>Qty</th><th>Location</th><th>Invoice / Ref</th><th>Email</th><th></th></tr></thead>
-            <tbody id="depletedDetailBody"></tbody>
           </table></div>
         </div>
       </div>
@@ -643,7 +620,11 @@
 
       <div id="consignmentFields" style="display:none;">
         <div class="field-row">
-          <div class="field"><label>Customer / Company</label><input id="consignCustomer" placeholder="Who has this stock?"></div>
+          <div class="field">
+            <label>Customer / Company</label>
+            <select id="consignCustomer" class="customer-select"></select>
+            <input id="consignCustomerNew" placeholder="New customer name" style="display:none;margin-top:6px;">
+          </div>
           <div class="field"><label>Agreement ends</label><input id="consignEndDate" type="date"></div>
         </div>
         <div class="field"><label>Agreement reference <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><input id="consignReference" placeholder="e.g. CONS-0007"></div>
@@ -653,7 +634,11 @@
       <div id="invoiceFields" style="display:none;">
         <div class="field-row">
           <div class="field"><label>Invoice number</label><input id="invNumber" placeholder="e.g. INV-0142"></div>
-          <div class="field"><label>Customer</label><input id="invCustomer" placeholder="Customer name"></div>
+          <div class="field">
+            <label>Customer</label>
+            <select id="invCustomer" class="customer-select"></select>
+            <input id="invCustomerNew" placeholder="New customer name" style="display:none;margin-top:6px;">
+          </div>
         </div>
         <div class="field"><label>Attach invoice (from Zoho)</label><input id="invFile" type="file" accept=".pdf,.jpg,.jpeg,.png"></div>
         <div class="hint">One invoice can cover every wine listed above — it'll be attached to all of them.</div>
@@ -855,6 +840,27 @@
       <button class="modal-close" data-close="customerModalBackdrop">&times;</button>
     </div>
     <div class="modal-body" id="customerModalBody"></div>
+    <div class="modal-foot">
+      <button class="btn ghost" id="btnDeleteCustomerFromModal" style="color:var(--red);">Delete customer</button>
+      <button class="btn secondary" id="btnEditCustomerFromModal">Edit details</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Customer Modal -->
+<div class="modal-backdrop" id="customerFormModalBackdrop">
+  <div class="modal">
+    <div class="modal-head"><h3 id="customerFormTitle">Add customer</h3><button class="modal-close" data-close="customerFormModalBackdrop">&times;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="customerFormId">
+      <div class="field"><label>Name</label><input id="customerFormName" placeholder="e.g. Acme Restaurant"></div>
+      <div class="field"><label>Phone / Email <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><input id="customerFormContact" placeholder="e.g. +254… or name@example.com"></div>
+      <div class="field"><label>Notes <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><textarea id="customerFormNotes" placeholder="Optional"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn secondary" data-close="customerFormModalBackdrop">Cancel</button>
+      <button class="btn" id="btnSaveCustomer">Save customer</button>
+    </div>
   </div>
 </div>
 
@@ -959,20 +965,34 @@ async function connectFirebase(cfg, silent){
     db = firebase.firestore();
     localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(cfg));
     updateCloudStatusUI();
-    await reloadFromCloud();
-    if(!silent) toast('Connected — data will now sync for your whole team', 'success');
   }catch(e){
     db = null;
     updateCloudStatusUI();
     if(!silent) toast('Could not connect — check the config was pasted correctly', 'error');
+    return;
+  }
+  // Connection itself succeeded — anything that goes wrong from here (loading or
+  // rendering) must NOT be treated as a connection failure, or a rendering bug
+  // could wrongly disconnect a perfectly good connection and hide real data.
+  try{
+    await reloadFromCloud();
+    if(!silent) toast('Connected — data will now sync for your whole team', 'success');
+  }catch(e){
+    console.error('Data load/render error (connection is still fine):', e);
+    if(!silent) toast('Connected, but something went wrong showing your data — try reloading the page', 'error');
   }
 }
 async function reloadFromCloud(){
   const loadedState = await loadJSON(STATE_KEY, true, null);
   if(loadedState){
-    state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], settings:{}, pendingExportMonth:'', lastAutoNotifiedMonth:'', lastReleaseOrderNo:0}, loadedState);
+    state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], customers:[], settings:{}, pendingExportMonth:'', lastAutoNotifiedMonth:'', lastReleaseOrderNo:0}, loadedState);
     state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:''}, state.settings||{});
   }
+  // Guard against any of these being missing/null/corrupt in the stored data —
+  // a single bad value here previously could silently blank the entire app.
+  if(!Array.isArray(state.wines)) state.wines = [];
+  if(!Array.isArray(state.movements)) state.movements = [];
+  if(!Array.isArray(state.customers)) state.customers = [];
   // Normalize stock numbers at the source — a single malformed/missing value here
   // was the cause of "NaN" appearing on location totals.
   state.wines.forEach(w=>{
@@ -984,6 +1004,7 @@ async function reloadFromCloud(){
     };
   });
   invoicesIndex = await loadJSON(INVOICE_INDEX_KEY, true, []);
+  if(!Array.isArray(invoicesIndex)) invoicesIndex = [];
   document.getElementById('bizName').textContent = state.businessName || 'Brut Africa';
   renderAll();
   checkMonthlyExportRollover();
@@ -1020,6 +1041,7 @@ let state = {
   businessName: 'Brut Africa',
   wines: [],
   movements: [],
+  customers: [],
   settings: {emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:''}
 };
 let invoicesIndex = [];
@@ -1149,20 +1171,17 @@ function renderDashboard(){
     feed.innerHTML = `<div class="empty-state" style="padding:24px 8px;"><p>No activity yet — log your first movement to get started.</p></div>`;
   } else {
     feed.innerHTML = recentBatches.map(b=>{
-      const icon = b.isRelease ? '🚚' : b.type==='move' ? '🔄' : b.type==='received' ? '📥' : b.type==='remove' ? '📦' : '🍷';
+      const icon = b.isRelease ? '🚚' : b.type==='move' ? '🔄' : b.type==='received' ? '📥' : b.type==='remove' ? '📦' : b.type==='consignment' ? '📤' : '🍷';
       const iconClass = b.isRelease ? 'received' : b.type==='move' ? 'move' : b.type==='received' ? 'received' : b.type==='remove' ? 'remove' : 'tasting';
-      const eventLabel = b.isRelease ? 'Release' : b.type==='move' ? 'Transfer' : b.type==='received' ? 'Received' : b.type==='remove' ? 'Sold / removed' : 'Tasting';
-      const route = b.type==='move' ? `${locLabel(b.from)} → ${locLabel(b.to)}` : locLabel(b.location);
-      const alertBadge = b.emailStatus==='sent' ? '<span class="badge green">✓ Sent</span>' :
-        b.emailStatus==='failed' ? '<span class="badge red">✕ Failed</span>' : '';
+      const eventLabel = b.isRelease ? 'Release' : b.type==='move' ? 'Transfer' : b.type==='received' ? 'Received' : b.type==='remove' ? 'Sold' : b.type==='consignment' ? 'Consignment' : 'Tasting';
       const totalQty = b.movements.reduce((s,m)=>s+m.qty,0);
       const wineCount = b.movements.length;
       const wineSummary = wineCount===1 ? (wineById(b.movements[0].wineId)?.name || '—') : `${wineCount} wines`;
       return `<div class="activity-item clickable-row" data-batch-id="${esc(b.batchId)}" style="cursor:pointer;">
         <div class="activity-icon ${iconClass}">${icon}</div>
         <div class="activity-main">
-          <div class="activity-title">${esc(wineSummary)} <span class="badge ${b.isRelease?'gold':'gray'}">${eventLabel}</span> ${alertBadge}</div>
-          <div class="activity-sub">${totalQty} bottle${totalQty===1?'':'s'} · ${route} · ${fmtDate(b.date)}</div>
+          <div class="activity-title">${esc(wineSummary)}</div>
+          <div class="activity-sub">${eventLabel} · ${totalQty} bottle${totalQty===1?'':'s'} · ${fmtDate(b.date)}</div>
         </div>
       </div>`;
     }).join('');
@@ -2193,14 +2212,14 @@ function openMoveModal(){
   document.getElementById('moveDate').value = todayStr();
   document.getElementById('moveNote').value = '';
   document.getElementById('invNumber').value = '';
-  document.getElementById('invCustomer').value = '';
   document.getElementById('invFile').value = '';
   document.getElementById('tastingContact').value = '';
   document.getElementById('receivedSupplier').value = '';
   document.getElementById('receivedReference').value = '';
-  document.getElementById('consignCustomer').value = '';
   document.getElementById('consignEndDate').value = '';
   document.getElementById('consignReference').value = '';
+  wireCustomerSelect('invCustomer', 'invCustomerNew', '');
+  wireCustomerSelect('consignCustomer', 'consignCustomerNew', '');
   document.getElementById('moveTypePickerField').style.display = 'block';
   document.getElementById('moveModalTitle').textContent = 'Log movement';
   setMoveType('move');
@@ -2304,7 +2323,7 @@ async function saveMovementInner(){
   let sharedInvoiceId = null;
   if(type==='remove'){
     const invNumber = document.getElementById('invNumber').value.trim();
-    const invCustomer = document.getElementById('invCustomer').value.trim();
+    const invCustomer = await getCustomerFieldValue('invCustomer', 'invCustomerNew');
     const fileInput = document.getElementById('invFile');
     if(invNumber || invCustomer || (fileInput.files && fileInput.files[0])){
       sharedInvoiceId = uid();
@@ -2325,10 +2344,10 @@ async function saveMovementInner(){
   const tastingContact = document.getElementById('tastingContact').value.trim();
   const receivedSupplier = document.getElementById('receivedSupplier').value.trim();
   const receivedReference = document.getElementById('receivedReference').value.trim();
-  const consignCustomer = document.getElementById('consignCustomer').value.trim();
+  const consignCustomer = type==='consignment' ? await getCustomerFieldValue('consignCustomer', 'consignCustomerNew') : '';
   const consignEndDate = document.getElementById('consignEndDate').value;
   const consignReference = document.getElementById('consignReference').value.trim();
-  if(type==='consignment' && !consignCustomer){ toast('Enter who this consignment is going to', 'error'); return; }
+  if(type==='consignment' && !consignCustomer){ toast('Choose or add who this consignment is going to', 'error'); return; }
   if(type==='consignment' && !consignEndDate){ toast('Set an agreement end date', 'error'); return; }
   const batchId = uid();
   const newMovements = [];
@@ -2971,117 +2990,178 @@ async function checkMonthlyExportRollover(){
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ---------- Render: Depleted (Sold & Tasted) ---------- */
-let depletedFilter = 'all';
-function computeCustomerGroups(){
-  const groups = {}; // key -> {name, movements:[], isFallback}
-  state.movements.forEach(m=>{
-    if(m.type==='remove'){
-      const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
-      const rawName = (inv && inv.customer) ? inv.customer.trim() : (m.consignee ? m.consignee.trim() : '');
-      const isFallback = !rawName;
-      const name = rawName || 'No customer recorded';
-      const key = 'cust:' + name.toLowerCase();
-      if(!groups[key]) groups[key] = {name, movements: [], isFallback};
-      groups[key].movements.push(m);
-    } else if(m.type==='tasting'){
-      // Each tasting event (everything logged together in one "Log movement" submission)
-      // is its own row — even if the same customer tastes on a different day.
-      const rawContact = (m.contact || '').trim();
-      const isFallback = !rawContact;
-      const contactLabel = rawContact || 'Tasting — unspecified';
-      const batchKey = m.batchId || m.id; // legacy entries without a batchId each stand alone
-      const key = 'tasting:' + batchKey;
-      const name = `${contactLabel} — ${fmtDate(m.date)}`;
-      if(!groups[key]) groups[key] = {name, movements: [], isFallback};
-      groups[key].movements.push(m);
-    }
+/* ---------- Customer registry ---------- */
+function customerByName(name){
+  const n = (name||'').trim().toLowerCase();
+  if(!n) return null;
+  return state.customers.find(c=>c.name.trim().toLowerCase()===n) || null;
+}
+async function ensureCustomerExists(name){
+  const trimmed = (name||'').trim();
+  if(!trimmed) return null;
+  const existing = customerByName(trimmed);
+  if(existing) return existing;
+  const c = {id: uid(), name: trimmed, contact:'', notes:'', createdAt: Date.now()};
+  state.customers.push(c);
+  return c;
+}
+function populateCustomerSelect(selectEl, currentName){
+  const sorted = [...state.customers].sort((a,b)=>a.name.localeCompare(b.name));
+  selectEl.innerHTML = `<option value="">— Select customer —</option>` +
+    sorted.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('') +
+    `<option value="__new__">+ Add new customer…</option>`;
+  if(currentName){
+    const match = sorted.find(c=>c.name.toLowerCase()===currentName.trim().toLowerCase());
+    selectEl.value = match ? match.name : '__new__';
+  }
+}
+function wireCustomerSelect(selectId, newInputId, currentName){
+  const sel = document.getElementById(selectId);
+  const newInput = document.getElementById(newInputId);
+  populateCustomerSelect(sel, currentName);
+  newInput.style.display = sel.value==='__new__' ? 'block' : 'none';
+  newInput.value = (sel.value==='__new__' && currentName) ? currentName : '';
+  sel.onchange = ()=>{
+    newInput.style.display = sel.value==='__new__' ? 'block' : 'none';
+    if(sel.value==='__new__') newInput.focus();
+  };
+}
+async function getCustomerFieldValue(selectId, newInputId){
+  const sel = document.getElementById(selectId);
+  const newInput = document.getElementById(newInputId);
+  let name = sel.value==='__new__' ? newInput.value.trim() : sel.value;
+  if(!name) return '';
+  await ensureCustomerExists(name);
+  return name;
+}
+
+function computeCustomerStats(){
+  // Sales only — tastings never appear here, by design.
+  const salesByCustomer = {};
+  state.movements.filter(m=>m.type==='remove').forEach(m=>{
+    const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
+    const name = (inv && inv.customer) ? inv.customer.trim() : (m.consignee ? m.consignee.trim() : '');
+    if(!name) return;
+    const key = name.toLowerCase();
+    if(!salesByCustomer[key]) salesByCustomer[key] = {name, movements: []};
+    salesByCustomer[key].movements.push(m);
   });
-  return groups;
+  return salesByCustomer;
 }
 function renderDepleted(){
-  const groups = computeCustomerGroups();
+  const search = (document.getElementById('customerSearch')?.value || '').trim().toLowerCase();
+  const stats = computeCustomerStats();
   const body = document.getElementById('depletedCustomerBody');
-  const entries = Object.entries(groups); // [key, group]
-  const named = entries.filter(([,g])=>!g.isFallback).sort((a,b)=>a[1].name.localeCompare(b[1].name));
-  const fallback = entries.filter(([,g])=>g.isFallback).sort((a,b)=>a[1].name.localeCompare(b[1].name));
-  const ordered = [...named, ...fallback];
+  const customers = [...state.customers]
+    .filter(c=>!search || c.name.toLowerCase().includes(search))
+    .sort((a,b)=>a.name.localeCompare(b.name));
 
-  body.innerHTML = ordered.length ? ordered.map(([key, g])=>{
-    const totalQty = g.movements.reduce((s,m)=>s+m.qty,0);
-    const wineCount = new Set(g.movements.map(m=>m.wineId)).size;
-    const lastDate = g.movements.reduce((max,m)=> m.date>max?m.date:max, '');
-    const soldCount = g.movements.filter(m=>m.type==='remove').length;
-    const tastingCount = g.movements.filter(m=>m.type==='tasting').length;
-    const revenue = g.movements.reduce((s,m)=>s+(m.lineTotal||0),0);
-    const badges = [soldCount ? `<span class="badge red">${soldCount} sold</span>` : '', tastingCount ? `<span class="badge amber">tasting</span>` : ''].filter(Boolean).join(' ');
-    return `<tr class="clickable-row" data-group-key="${esc(key)}" style="cursor:pointer;">
-      <td><div class="wine-name">${esc(g.name)}</div><div style="margin-top:3px;">${badges}</div></td>
-      <td>${wineCount} wine${wineCount===1?'':'s'}</td>
-      <td>${totalQty} bottle${totalQty===1?'':'s'}</td>
+  if(!customers.length){
+    body.innerHTML = `<tr class="empty-row"><td colspan="5">${state.customers.length ? 'No customers match your search.' : 'No customers yet — click "+ Add customer" to start your list.'}</td></tr>`;
+    return;
+  }
+  body.innerHTML = customers.map(c=>{
+    const s = stats[c.name.toLowerCase()];
+    const totalQty = s ? s.movements.reduce((sum,m)=>sum+m.qty,0) : 0;
+    const revenue = s ? s.movements.reduce((sum,m)=>sum+(m.lineTotal||0),0) : 0;
+    const lastDate = s ? s.movements.reduce((max,m)=> m.date>max?m.date:max, '') : '';
+    return `<tr class="clickable-row" data-customer-id="${c.id}" style="cursor:pointer;">
+      <td><div class="wine-name">${esc(c.name)}</div>${c.contact?`<div class="wine-sub">${esc(c.contact)}</div>`:''}</td>
+      <td>${totalQty>0 ? totalQty+' bottles' : '—'}</td>
       <td>${revenue>0?formatKES(revenue):'—'}</td>
       <td>${lastDate?fmtDate(lastDate):'—'}</td>
+      <td><button class="btn ghost small" data-edit-customer="${c.id}">Edit</button></td>
     </tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="5">Nothing sold or tasted yet.</td></tr>`;
-  body.querySelectorAll('[data-group-key]').forEach(tr=>{
-    tr.addEventListener('click', ()=> openCustomerDetailModal(tr.dataset.groupKey));
+  }).join('');
+  body.querySelectorAll('[data-customer-id]').forEach(tr=>{
+    tr.addEventListener('click', (e)=>{
+      if(e.target.closest('[data-edit-customer]')) return;
+      openCustomerDetailModal(tr.dataset.customerId);
+    });
   });
-  renderDepletedDetail(depletedFilter);
+  body.querySelectorAll('[data-edit-customer]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); openCustomerFormModal(btn.dataset.editCustomer); });
+  });
 }
-function openCustomerDetailModal(key){
-  const groups = computeCustomerGroups();
-  const group = groups[key];
-  if(!group) return;
-  document.getElementById('customerModalTitle').textContent = group.name;
-  const totalQty = group.movements.reduce((s,m)=>s+m.qty,0);
-  const totalRevenue = group.movements.reduce((s,m)=>s+(m.lineTotal||0),0);
-  document.getElementById('customerModalSubtitle').textContent = `${group.movements.length} movement${group.movements.length===1?'':'s'} · ${totalQty} bottle${totalQty===1?'':'s'}${totalRevenue>0?` · ${formatKES(totalRevenue)}`:''}`;
-  const rows = [...group.movements].sort((a,b)=>b.createdAt-a.createdAt);
+document.getElementById('customerSearch').addEventListener('input', renderDepleted);
+
+function openCustomerDetailModal(customerId){
+  const c = state.customers.find(x=>x.id===customerId);
+  if(!c) return;
+  const stats = computeCustomerStats();
+  const s = stats[c.name.toLowerCase()];
+  const movements = s ? s.movements : [];
+  document.getElementById('customerModalTitle').textContent = c.name;
+  const totalQty = movements.reduce((sum,m)=>sum+m.qty,0);
+  const totalRevenue = movements.reduce((sum,m)=>sum+(m.lineTotal||0),0);
+  const subtitleParts = [`${totalQty} bottle${totalQty===1?'':'s'}`];
+  if(totalRevenue>0) subtitleParts.push(formatKES(totalRevenue));
+  if(c.contact) subtitleParts.push(c.contact);
+  document.getElementById('customerModalSubtitle').textContent = subtitleParts.join(' · ');
   const body = document.getElementById('customerModalBody');
-  body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Wine</th><th>Event</th><th>Qty</th><th>Price</th><th>Total</th><th>Location</th><th>Ref</th></tr></thead><tbody>
-    ${rows.map(m=>{
-      const w = wineById(m.wineId);
-      const badge = m.type==='remove' ? '<span class="badge red">Sold</span>' : '<span class="badge amber">Tasting</span>';
-      let ref;
-      if(m.type==='remove'){
+  if(!movements.length){
+    body.innerHTML = `<div class="empty-state"><p>No sales logged for ${esc(c.name)} yet.</p></div>`;
+  } else {
+    const rows = [...movements].sort((a,b)=>b.createdAt-a.createdAt);
+    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Wine</th><th>Qty</th><th>Price</th><th>Total</th><th>Invoice</th></tr></thead><tbody>
+      ${rows.map(m=>{
+        const w = wineById(m.wineId);
         const inv = m.invoiceId?invoicesIndex.find(i=>i.id===m.invoiceId):null;
-        ref = inv ? `<span class="filelink" data-view-inv="${inv.id}">${esc(inv.number||'View invoice')}${inv.fileName?' 📎':''}</span>` : '—';
-      }
-      else { ref = esc(m.note||'—'); }
-      const priceCell = m.unitPrice ? formatKES(m.unitPrice) : '—';
-      const totalCell = m.lineTotal ? formatKES(m.lineTotal) : '—';
-      return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${badge}</td><td>${m.qty}</td><td>${priceCell}</td><td>${totalCell}</td><td>${locLabel(m.location)}</td><td>${ref}</td></tr>`;
-    }).join('')}
-  </tbody></table></div>`;
-  body.querySelectorAll('[data-view-inv]').forEach(el=>el.addEventListener('click', ()=>viewInvoice(el.dataset.viewInv)));
+        const ref = inv ? `<span class="filelink" data-view-inv="${inv.id}">${esc(inv.number||'View invoice')}${inv.fileName?' 📎':''}</span>` : '—';
+        return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td><td>${m.unitPrice?formatKES(m.unitPrice):'—'}</td><td>${m.lineTotal?formatKES(m.lineTotal):'—'}</td><td>${ref}</td></tr>`;
+      }).join('')}
+    </tbody></table></div>`;
+    body.querySelectorAll('[data-view-inv]').forEach(el=>el.addEventListener('click', ()=>viewInvoice(el.dataset.viewInv)));
+  }
+  document.getElementById('btnEditCustomerFromModal').onclick = ()=>{ closeModal('customerModalBackdrop'); openCustomerFormModal(c.id); };
+  document.getElementById('btnDeleteCustomerFromModal').onclick = ()=> deleteCustomer(c.id);
   document.getElementById('customerModalBackdrop').classList.add('open');
 }
-function renderDepletedDetail(filter){
-  depletedFilter = filter;
-  const body = document.getElementById('depletedDetailBody');
-  let rows = state.movements.filter(m=>m.type==='remove'||m.type==='tasting');
-  if(filter==='sold') rows = rows.filter(m=>m.type==='remove');
-  if(filter==='tasting') rows = rows.filter(m=>m.type==='tasting');
-  rows = applyWineSearchDateFilter(rows, 'depletedSearch', 'depletedDateFrom', 'depletedDateTo');
-  const batches = computeBatches(rows).sort((a,b)=>b.createdAt-a.createdAt);
-  body.innerHTML = batches.length ? batches.map(b=>batchRow(b)).join('') :
-    `<tr class="empty-row"><td colspan="8">No records match your filters.</td></tr>`;
-  wireBatchRowActions(body, rows);
-  document.querySelectorAll('#depletedFilterBtns button').forEach(b=>b.classList.toggle('active', b.dataset.filter===filter));
+
+function openCustomerFormModal(customerId){
+  const c = customerId ? state.customers.find(x=>x.id===customerId) : null;
+  document.getElementById('customerFormTitle').textContent = c ? 'Edit customer' : 'Add customer';
+  document.getElementById('customerFormId').value = c ? c.id : '';
+  document.getElementById('customerFormName').value = c ? c.name : '';
+  document.getElementById('customerFormContact').value = c ? (c.contact||'') : '';
+  document.getElementById('customerFormNotes').value = c ? (c.notes||'') : '';
+  document.getElementById('customerFormModalBackdrop').classList.add('open');
 }
-document.getElementById('depletedFilterBtns').addEventListener('click', e=>{
-  const b = e.target.closest('button[data-filter]');
-  if(!b) return;
-  renderDepletedDetail(b.dataset.filter);
+document.getElementById('btnAddCustomer').addEventListener('click', ()=> openCustomerFormModal(null));
+document.getElementById('btnSaveCustomer').addEventListener('click', async ()=>{
+  const id = document.getElementById('customerFormId').value;
+  const name = document.getElementById('customerFormName').value.trim();
+  if(!name){ toast('Customer name is required', 'error'); return; }
+  if(db) await reloadFromCloud();
+  const dupe = state.customers.find(c=>c.id!==id && c.name.trim().toLowerCase()===name.toLowerCase());
+  if(dupe){ toast('A customer with that name already exists', 'error'); return; }
+  const data = {
+    name,
+    contact: document.getElementById('customerFormContact').value.trim(),
+    notes: document.getElementById('customerFormNotes').value.trim()
+  };
+  if(id){
+    const c = state.customers.find(x=>x.id===id);
+    if(c) Object.assign(c, data);
+  } else {
+    state.customers.push({id: uid(), createdAt: Date.now(), ...data});
+  }
+  await saveJSON(STATE_KEY, state, true);
+  closeModal('customerFormModalBackdrop');
+  renderAll();
+  toast('Customer saved', 'success');
 });
-document.getElementById('depletedSearch').addEventListener('input', ()=>renderDepletedDetail(depletedFilter));
-document.getElementById('depletedDateFrom').addEventListener('change', ()=>renderDepletedDetail(depletedFilter));
-document.getElementById('depletedDateTo').addEventListener('change', ()=>renderDepletedDetail(depletedFilter));
-document.getElementById('btnClearDepletedFilter').addEventListener('click', ()=>{
-  document.getElementById('depletedSearch').value = '';
-  document.getElementById('depletedDateFrom').value = '';
-  document.getElementById('depletedDateTo').value = '';
-  renderDepletedDetail(depletedFilter);
-});
+async function deleteCustomer(id){
+  const c = state.customers.find(x=>x.id===id);
+  if(!c) return;
+  if(!confirm(`Remove "${c.name}" from your customer list? Their past sales history stays intact — this only removes them from the list for new sales.`)) return;
+  if(db) await reloadFromCloud();
+  state.customers = state.customers.filter(x=>x.id!==id);
+  await saveJSON(STATE_KEY, state, true);
+  closeModal('customerModalBackdrop');
+  renderAll();
+  toast('Customer removed', 'success');
+}
 
 /* ---------- Master render ---------- */
 function renderAll(){
