@@ -924,6 +924,9 @@
 const FIREBASE_CONFIG_KEY = 'brut-africa-firebase-config';
 const COLLECTION = 'brut-africa-data';
 let db = null;
+let lastKnownWineCount = 0;
+let lastKnownMovementCount = 0;
+let allowEmptyStateSave = false; // only ever set true, briefly, by the explicit Reset & Start Fresh flow
 
 function firestoreDocRef(key){
   return db.collection(COLLECTION).doc(key.replace(/[:/]/g, '_'));
@@ -941,8 +944,24 @@ async function loadJSON(key, shared, fallback, rethrowOnError){
 }
 async function saveJSON(key, value, shared){
   if(!db){ toast('Not connected to shared storage — set it up in Settings', 'error'); return; }
+  // Hard safety net: never silently overwrite real data with an empty state.
+  // This is the single most important guard in the app — it exists because
+  // a bug once did exactly this and there was no way to undo it.
+  if(key===STATE_KEY && !allowEmptyStateSave){
+    const wines = Array.isArray(value.wines) ? value.wines.length : 0;
+    const movements = Array.isArray(value.movements) ? value.movements.length : 0;
+    if(wines===0 && movements===0 && (lastKnownWineCount>0 || lastKnownMovementCount>0)){
+      console.error('BLOCKED a save that would have wiped wines/movements to empty. Last known counts:', lastKnownWineCount, lastKnownMovementCount);
+      toast('Save blocked — this would have erased your wine list. Reload the page and try again; if this keeps happening, tell me immediately.', 'error');
+      return;
+    }
+  }
   try{
     await firestoreDocRef(key).set({value: JSON.stringify(value)});
+    if(key===STATE_KEY){
+      lastKnownWineCount = Array.isArray(value.wines) ? value.wines.length : lastKnownWineCount;
+      lastKnownMovementCount = Array.isArray(value.movements) ? value.movements.length : lastKnownMovementCount;
+    }
     setSavedStamp();
   }catch(e){ toast('Could not save — check your connection', 'error'); }
 }
@@ -1019,6 +1038,10 @@ async function reloadFromCloud(){
   });
   invoicesIndex = await loadJSON(INVOICE_INDEX_KEY, true, []);
   if(!Array.isArray(invoicesIndex)) invoicesIndex = [];
+  // Remember these counts — saveJSON refuses to silently overwrite a known-good
+  // wine/movement history with an empty one.
+  if(state.wines.length>0) lastKnownWineCount = state.wines.length;
+  if(state.movements.length>0) lastKnownMovementCount = state.movements.length;
   document.getElementById('bizName').textContent = state.businessName || 'Brut Africa';
   renderAll();
   checkMonthlyExportRollover();
@@ -2805,12 +2828,15 @@ document.getElementById('btnConfirmReset').addEventListener('click', async ()=>{
     state.pendingExportMonth = '';
     state.lastAutoNotifiedMonth = '';
     invoicesIndex = [];
+    allowEmptyStateSave = true;
     await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
     await saveJSON(STATE_KEY, state, true);
+    allowEmptyStateSave = false;
     closeModal('resetModalBackdrop');
     renderAll();
     toast('Everything reset — all stock is now in Bonded Warehousing', 'success');
   }catch(e){
+    allowEmptyStateSave = false;
     toast('Reset failed — check your connection and try again', 'error');
   } finally {
     btn.textContent = 'Reset everything';
