@@ -295,6 +295,7 @@
   <div id="cloudBanner" style="display:none;background:var(--amber-soft);color:#5F4A17;border:1px solid #E4C079;border-radius:8px;padding:10px 16px;margin-top:16px;font-size:12.5px;">
     ⚠️ Not connected to shared storage yet — your team won't see each other's changes, and nothing you enter will be saved after you close this page. <a href="#" data-goto="settings" style="color:var(--wine);font-weight:600;">Set it up in Settings →</a>
   </div>
+  <div id="dataErrorBanner" style="display:none;background:var(--red-soft);color:#7A2626;border:1px solid #E0AFAF;border-radius:8px;padding:12px 16px;margin-top:16px;font-size:12.5px;"></div>
   <div id="globalExportBanner" style="display:none;background:var(--gold-soft);border:1px solid var(--gold);color:var(--wine-dark);border-radius:8px;padding:10px 16px;margin-top:16px;font-size:12.5px;">
     📊 Last month's Zoho export is ready. <a href="#" data-goto="export" style="color:var(--wine);font-weight:600;">Download it →</a>
   </div>
@@ -927,12 +928,16 @@ let db = null;
 function firestoreDocRef(key){
   return db.collection(COLLECTION).doc(key.replace(/[:/]/g, '_'));
 }
-async function loadJSON(key, shared, fallback){
+async function loadJSON(key, shared, fallback, rethrowOnError){
   if(!db) return fallback;
   try{
     const snap = await firestoreDocRef(key).get();
     return snap.exists ? JSON.parse(snap.data().value) : fallback;
-  }catch(e){ return fallback; }
+  }catch(e){
+    console.error('Firestore read failed for', key, e);
+    if(rethrowOnError) throw e;
+    return fallback;
+  }
 }
 async function saveJSON(key, value, shared){
   if(!db){ toast('Not connected to shared storage — set it up in Settings', 'error'); return; }
@@ -976,14 +981,23 @@ async function connectFirebase(cfg, silent){
   // could wrongly disconnect a perfectly good connection and hide real data.
   try{
     await reloadFromCloud();
+    document.getElementById('dataErrorBanner').style.display = 'none';
     if(!silent) toast('Connected — data will now sync for your whole team', 'success');
   }catch(e){
     console.error('Data load/render error (connection is still fine):', e);
-    if(!silent) toast('Connected, but something went wrong showing your data — try reloading the page', 'error');
+    const isPermission = e && (e.code==='permission-denied' || /permission/i.test(e.message||''));
+    const banner = document.getElementById('dataErrorBanner');
+    banner.style.display = 'block';
+    banner.innerHTML = isPermission
+      ? `⚠️ <strong>Your data couldn't be read — this is not the same as it being deleted.</strong> This almost always means Firestore's "test mode" security rules have expired (they last 30 days). Go to your <a href="https://console.firebase.google.com" target="_blank" rel="noopener" style="color:var(--wine);font-weight:600;">Firebase Console</a> → Firestore Database → Rules, and either extend test mode or set rules to allow read/write, then reload this page. Your data is very likely still there.`
+      : `⚠️ <strong>Something went wrong loading your data</strong> (not the same as it being deleted). Try reloading the page. If it keeps happening, check your internet connection or Firebase project status.`;
+    // This is critical enough to show even during a silent automatic reload —
+    // hiding it here is exactly what caused the original confusion.
+    toast('Could not load your data — see the message at the top of the page', 'error');
   }
 }
 async function reloadFromCloud(){
-  const loadedState = await loadJSON(STATE_KEY, true, null);
+  const loadedState = await loadJSON(STATE_KEY, true, null, true);
   if(loadedState){
     state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], customers:[], settings:{}, pendingExportMonth:'', lastAutoNotifiedMonth:'', lastReleaseOrderNo:0}, loadedState);
     state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:''}, state.settings||{});
