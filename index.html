@@ -519,6 +519,11 @@
         <div class="panel-body">
           <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">Downloads everything — your full wine list, every movement, and every invoice record — as one file. Nothing gets deleted from the app; this is just a safety copy. Worth doing every so often, and especially before using Reset below.</p>
           <button class="btn secondary" id="btnFullBackup">⬇ Download full backup</button>
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line-soft);">
+            <p style="font-size:13px;color:var(--ink-soft);margin:0 0 10px;">Restore from a backup file — replaces your current wines, customers, and (if included) movements with whatever is in the file. Use this if your data was ever lost and you have a backup to load back in.</p>
+            <input type="file" id="restoreFileInput" accept=".json" style="display:none;">
+            <button class="btn secondary" id="btnRestoreBackup">⬆ Restore from backup file</button>
+          </div>
         </div>
       </div>
       <div class="panel" style="border-color:#E0AFAF;">
@@ -2788,6 +2793,7 @@ async function downloadFullBackup(){
     businessName: state.businessName,
     wines: state.wines,
     movements: state.movements,
+    customers: state.customers,
     invoices: invoicesIndex
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
@@ -2801,6 +2807,42 @@ async function downloadFullBackup(){
 document.getElementById('btnFullBackup').addEventListener('click', async ()=>{
   await downloadFullBackup();
   toast('Backup downloaded', 'success');
+});
+
+document.getElementById('btnRestoreBackup').addEventListener('click', ()=>{
+  document.getElementById('restoreFileInput').click();
+});
+document.getElementById('restoreFileInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(!Array.isArray(data.wines)){ toast('That file doesn\'t look like a valid backup (no wine list found)', 'error'); return; }
+    const wineCount = data.wines.length;
+    const moveCount = Array.isArray(data.movements) ? data.movements.length : 0;
+    const custCount = Array.isArray(data.customers) ? data.customers.length : 0;
+    if(!confirm(`Restore ${wineCount} wines, ${moveCount} movements, and ${custCount} customers from this file? This replaces everything currently in the app for your whole team.`)) return;
+
+    state.wines = data.wines;
+    state.movements = Array.isArray(data.movements) ? data.movements : [];
+    state.customers = Array.isArray(data.customers) ? data.customers : [];
+    if(data.businessName) state.businessName = data.businessName;
+    if(Array.isArray(data.invoices)) invoicesIndex = data.invoices;
+
+    allowEmptyStateSave = true; // a restore is an intentional full replace, even if the file itself is sparse
+    await saveJSON(STATE_KEY, state, true);
+    await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
+    allowEmptyStateSave = false;
+
+    lastKnownWineCount = state.wines.length;
+    lastKnownMovementCount = state.movements.length;
+    renderAll();
+    toast(`Restored ${wineCount} wines, ${moveCount} movements, ${custCount} customers`, 'success');
+  }catch(err){
+    toast('Could not read that file — make sure it\'s a valid backup JSON', 'error');
+  }
+  e.target.value = '';
 });
 
 /* ---------- Reset & Start Fresh ---------- */
