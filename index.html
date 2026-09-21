@@ -3275,23 +3275,46 @@ function openCustomerDetailModal(customerId){
   if(!allActivity.length){
     body.innerHTML = `<div class="empty-state"><p>No activity logged for ${esc(c.name)} yet.</p></div>`;
   } else {
-    const rows = [...allActivity].sort((a,b)=>b.createdAt-a.createdAt);
-    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Event</th><th>Wine</th><th>Qty</th><th>Price</th><th>Total</th><th>Ref</th></tr></thead><tbody>
-      ${rows.map(m=>{
-        const w = wineById(m.wineId);
+    const batches = computeBatches(allActivity).sort((a,b)=>b.createdAt-a.createdAt);
+    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th></th><th>Date</th><th>Event</th><th>Wine(s)</th><th>Qty</th><th>Total</th><th>Ref</th></tr></thead><tbody>
+      ${batches.map(b=>{
+        const wineCount = b.movements.length;
+        const wineSummary = wineCount===1 ? (wineById(b.movements[0].wineId)?.name || '—') : `${wineCount} wines`;
+        const totalQty = b.movements.reduce((s,m)=>s+m.qty,0);
+        const totalValue = b.movements.reduce((s,m)=>s+(m.lineTotal||0),0);
         let ref = '—';
-        if(m.type==='remove'){
-          const inv = m.invoiceId?invoicesIndex.find(i=>i.id===m.invoiceId):null;
+        if(b.type==='remove'){
+          const inv = b.invoiceId?invoicesIndex.find(i=>i.id===b.invoiceId):null;
           ref = inv ? `<span class="filelink" data-view-inv="${inv.id}">${esc(inv.number||'View invoice')}${inv.fileName?' 📎':''}</span>` : '—';
-        } else if(m.type==='consignment'){
-          const dLeft = daysUntil(m.agreementEnd);
-          const outstanding = m.qty - (m.resolvedQty||0);
+        } else if(b.type==='consignment'){
+          const dLeft = daysUntil(b.agreementEnd);
+          const outstanding = b.movements.reduce((s,m)=>s+(m.qty-(m.resolvedQty||0)),0);
           ref = outstanding>0 ? (dLeft!==null && dLeft<0 ? `<span style="color:var(--red);">overdue</span>` : `${outstanding} outstanding`) : 'resolved';
         }
-        return `<tr><td>${fmtDate(m.date)}</td><td>${typeBadgeFor(m.type, m.isRelease)}</td><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td><td>${m.unitPrice?formatKES(m.unitPrice):'—'}</td><td>${m.lineTotal?formatKES(m.lineTotal):'—'}</td><td>${ref}</td></tr>`;
+        const detailRows = b.movements.map(m=>{
+          const w = wineById(m.wineId);
+          return `<tr class="cust-batch-detail" data-batch-detail="${esc(b.batchId)}" style="display:none;background:var(--surface-2);">
+            <td></td><td colspan="2" style="font-size:12px;color:var(--ink-soft);">${w?esc(w.name):'—'}</td>
+            <td>${m.qty}</td><td>${m.lineTotal?formatKES(m.lineTotal):(m.unitPrice?formatKES(m.unitPrice)+'/btl':'—')}</td><td></td></tr>`;
+        }).join('');
+        return `<tr class="clickable-row cust-batch-row" data-batch-toggle="${esc(b.batchId)}" style="cursor:pointer;">
+          <td style="color:var(--ink-faint);">${wineCount>1?'▸':''}</td>
+          <td>${fmtDate(b.date)}</td><td>${typeBadgeFor(b.type, b.isRelease)}</td><td>${esc(wineSummary)}</td>
+          <td>${totalQty}</td><td>${totalValue?formatKES(totalValue):'—'}</td><td>${ref}</td>
+        </tr>${detailRows}`;
       }).join('')}
     </tbody></table></div>`;
-    body.querySelectorAll('[data-view-inv]').forEach(el=>el.addEventListener('click', ()=>viewInvoice(el.dataset.viewInv)));
+    body.querySelectorAll('[data-view-inv]').forEach(el=>el.addEventListener('click', e=>{ e.stopPropagation(); viewInvoice(el.dataset.viewInv); }));
+    body.querySelectorAll('[data-batch-toggle]').forEach(row=>{
+      row.addEventListener('click', ()=>{
+        const id = row.dataset.batchToggle;
+        const detailRows = body.querySelectorAll(`[data-batch-detail="${id}"]`);
+        if(!detailRows.length) return; // single-wine batch, nothing to expand
+        const nowOpen = detailRows[0].style.display === 'table-row';
+        detailRows.forEach(r=>{ r.style.display = nowOpen ? 'none' : 'table-row'; });
+        row.querySelector('td').textContent = nowOpen ? '▸' : '▾';
+      });
+    });
   }
   document.getElementById('btnEditCustomerFromModal').onclick = ()=>{ closeModal('customerModalBackdrop'); openCustomerFormModal(c.id); };
   document.getElementById('btnDeleteCustomerFromModal').onclick = ()=> deleteCustomer(c.id);
