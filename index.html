@@ -12,6 +12,7 @@
 <meta name="theme-color" content="#4A0E18">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png"><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
@@ -495,6 +496,50 @@
         </div>
       </div>
       <div class="panel">
+        <div class="panel-head"><h3>📗 Google Drive sync <span class="badge gray" style="font-size:10px;">Coming soon</span></h3></div>
+        <div class="panel-body">
+          <p style="font-size:13px;color:var(--ink-soft);margin:0;">This is being built — not wired up yet, so nothing below does anything just yet. Ask me to finish it whenever you want it active.</p>
+          <div id="driveNotSetUp" style="display:none;">
+            <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px;">One-time setup needed — you'll need a Google OAuth Client ID:</p>
+            <ol style="font-size:12.5px;color:var(--ink-soft);margin:0 0 12px;padding-left:18px;line-height:1.7;">
+              <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style="color:var(--wine);">console.cloud.google.com</a> → create a project (or use an existing one)</li>
+              <li>APIs & Services → Library → enable the <strong>Google Drive API</strong></li>
+              <li>APIs & Services → Credentials → Create Credentials → <strong>OAuth client ID</strong> → Web application</li>
+              <li>Under "Authorized JavaScript origins" add: <span class="mono" id="originHint" style="font-size:11.5px;"></span></li>
+              <li>Copy the Client ID it gives you and paste it below</li>
+            </ol>
+            <div class="field"><label>Google OAuth Client ID</label><input id="driveClientId" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>
+            <button class="btn secondary" id="btnSaveDriveClientId">Save Client ID</button>
+          </div>
+          <div id="driveSetUp" style="display:none;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+              <span class="status-dot" id="driveStatusDot"></span>
+              <span id="driveStatusText" style="font-size:13px;"></span>
+            </div>
+            <button class="btn secondary" id="btnConnectDrive">Connect Google Drive</button>
+            <button class="btn ghost small" id="btnChangeDriveClientId">Change Client ID</button>
+            <div id="driveFileLinkWrap" style="margin-top:10px;display:none;font-size:12.5px;">
+              <a href="#" id="driveFileLink" target="_blank" rel="noopener" style="color:var(--wine);font-weight:600;">Open the live file in Google Drive →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>🤖 AI Assistant <span class="badge green" style="font-size:10px;">Free</span></h3></div>
+        <div class="panel-body">
+          <p style="font-size:13px;color:var(--ink-soft);margin:0 0 10px;">Lets you ask questions about your data in plain English, from the floating "Ask" button. Runs on Cloudflare's free Workers AI — no card, no ongoing cost. All done through Cloudflare's website, no command line needed.</p>
+          <ol style="font-size:12.5px;color:var(--ink-soft);margin:0 0 12px;padding-left:18px;line-height:1.8;">
+            <li>Go to <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener" style="color:var(--wine);">dash.cloudflare.com/sign-up</a> and create a free account (email only, no card)</li>
+            <li>In the dashboard: <strong>Workers & Pages</strong> → <strong>Create</strong> → <strong>Create Worker</strong> → give it a name → <strong>Deploy</strong></li>
+            <li>Click <strong>Edit code</strong>, delete everything in the editor, and paste in the worker.js file I gave you → <strong>Save and deploy</strong></li>
+            <li>Go to that worker's <strong>Settings</strong> tab → <strong>Bindings</strong> → <strong>Add binding</strong> → <strong>Workers AI</strong> → name it exactly <span class="mono">AI</span> → Save</li>
+            <li>Copy the worker's URL from the top of its page (looks like <span class="mono">https://your-worker-name.your-subdomain.workers.dev</span>) and paste it below</li>
+          </ol>
+          <div class="field"><label>Cloudflare Worker URL</label><input id="aiFunctionUrl" placeholder="https://your-worker-name.your-subdomain.workers.dev"></div>
+          <button class="btn secondary" id="btnSaveAiFunctionUrl">Save</button>
+        </div>
+      </div>
+      <div class="panel">
         <div class="panel-head"><h3>🚚 Release order defaults</h3></div>
         <div class="panel-body">
           <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">Pre-fills these each time you log a release, so you're not retyping the same details. All editable per release.</p>
@@ -634,6 +679,10 @@
           <div class="field"><label>Agreement ends</label><input id="consignEndDate" type="date"></div>
         </div>
         <div class="field"><label>Agreement reference <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label><input id="consignReference" placeholder="e.g. CONS-0007"></div>
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--ink-soft);margin:4px 0 0;cursor:pointer;">
+          <input type="checkbox" id="consignBackfillOnly" style="margin-top:2px;">
+          <span>This already happened and is already reflected in your current stock numbers — just record it for tracking, don't deduct stock again.</span>
+        </label>
         <div class="hint">Stock leaves your count now, but won't count as revenue until you mark it sold. You'll get an email reminder if the agreement date passes with stock still outstanding.</div>
       </div>
 
@@ -693,6 +742,21 @@
     <div class="modal-foot">
       <button class="btn secondary" data-close="resetModalBackdrop">Cancel</button>
       <button class="btn" id="btnConfirmReset" disabled style="background:var(--red);">Reset everything</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Assistant -->
+<button id="btnOpenAi" style="display:none;position:fixed;bottom:22px;right:22px;z-index:40;background:var(--wine);color:#fff;border:none;border-radius:999px;padding:12px 20px;font-weight:600;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;">🤖 Ask</button>
+<div class="modal-backdrop" id="aiModalBackdrop">
+  <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:80vh;">
+    <div class="modal-head"><h3>🤖 Ask about your cellar</h3><button class="modal-close" data-close="aiModalBackdrop">&times;</button></div>
+    <div class="modal-body" id="aiChatLog" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:200px;">
+      <div style="font-size:12.5px;color:var(--ink-soft);">Ask things like "how much Iconoclaste is at Karen?", "who owes us the most?", or "what's overdue on consignment?" — answers are based on your current data.</div>
+    </div>
+    <div class="modal-foot" style="border-top:1px solid var(--line-soft);gap:8px;">
+      <input id="aiChatInput" placeholder="Ask a question…" style="flex:1;">
+      <button class="btn" id="btnAiChatSend">Ask</button>
     </div>
   </div>
 </div>
@@ -1024,7 +1088,7 @@ async function reloadFromCloud(){
   const loadedState = await loadJSON(STATE_KEY, true, null, true);
   if(loadedState){
     state = Object.assign({businessName:'Brut Africa', wines:[], movements:[], customers:[], settings:{}, pendingExportMonth:'', lastAutoNotifiedMonth:'', lastReleaseOrderNo:0}, loadedState);
-    state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:''}, state.settings||{});
+    state.settings = Object.assign({emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:'', aiFunctionUrl:'', driveClientId:'', driveFileId:''}, state.settings||{});
   }
   // Guard against any of these being missing/null/corrupt in the stored data —
   // a single bad value here previously could silently blank the entire app.
@@ -1084,7 +1148,7 @@ let state = {
   wines: [],
   movements: [],
   customers: [],
-  settings: {emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:''}
+  settings: {emailjsServiceId:'', emailjsTemplateId:'', emailjsPublicKey:'', emailjsPrivateKey:'', notifyEmail:'', bondedAgent:'', bondedLocation:'', defaultTransporter:'', bondedEmail:'', aiFunctionUrl:'', driveClientId:'', driveFileId:''}
 };
 let invoicesIndex = [];
 
@@ -2260,6 +2324,7 @@ function openMoveModal(){
   document.getElementById('receivedReference').value = '';
   document.getElementById('consignEndDate').value = '';
   document.getElementById('consignReference').value = '';
+  document.getElementById('consignBackfillOnly').checked = false;
   wireCustomerSelect('invCustomer', 'invCustomerNew', '');
   wireCustomerSelect('consignCustomer', 'consignCustomerNew', '');
   document.getElementById('moveTypePickerField').style.display = 'block';
@@ -2327,6 +2392,7 @@ async function saveMovementInner(){
   if(db) await reloadFromCloud();
 
   const isIncrease = type==='received';
+  const isBackfillConsignment = type==='consignment' && document.getElementById('consignBackfillOnly').checked;
 
   // Gather and validate every line first (all-or-nothing)
   const lineEls = Array.from(document.querySelectorAll('.move-line'));
@@ -2338,7 +2404,7 @@ async function saveMovementInner(){
     const unit = el.querySelector('.line-unit').value;
     const qty = unit==='case' ? rawQty * CASE_SIZE : rawQty;
     if(!w){ toast('Choose a wine for every line', 'error'); return; }
-    if(!isIncrease){
+    if(!isIncrease && !isBackfillConsignment){
       const checkLoc = from; // moveFrom field doubles as "location" for remove/tasting
       if(w.stock[checkLoc] < qty){
         toast(`Not enough stock of "${w.name}" at ${locLabel(checkLoc)} (have ${w.stock[checkLoc]}, need ${qty})`, 'error');
@@ -2348,8 +2414,8 @@ async function saveMovementInner(){
     lines.push({wine:w, qty, unitLabel: unit==='case' ? `${rawQty} case${rawQty===1?'':'s'}` : `${rawQty} bottle${rawQty===1?'':'s'}`,
       unitPrice: (type==='remove'||type==='consignment') ? (parseFloat(el.querySelector('.line-price-input').value) || 0) : 0});
   }
-  // Guard against the same wine appearing twice and jointly exceeding stock (not relevant for receiving)
-  if(!isIncrease){
+  // Guard against the same wine appearing twice and jointly exceeding stock (not relevant for receiving or backfilled consignments)
+  if(!isIncrease && !isBackfillConsignment){
     const combined = {};
     lines.forEach(l=>{ combined[l.wine.id] = (combined[l.wine.id]||0) + l.qty; });
     for(const wid in combined){
@@ -2405,7 +2471,7 @@ async function saveMovementInner(){
       if(receivedSupplier) movement.supplier = receivedSupplier;
       if(receivedReference) movement.reference = receivedReference;
     } else if(type==='consignment'){
-      w.stock[from] -= line.qty;
+      if(!isBackfillConsignment) w.stock[from] -= line.qty;
       movement.location = from;
       movement.consignee = consignCustomer;
       movement.agreementEnd = consignEndDate;
@@ -2413,6 +2479,7 @@ async function saveMovementInner(){
       movement.resolvedQty = 0;
       movement.consignmentStatus = 'outstanding';
       movement.overdueNotified = false;
+      if(isBackfillConsignment) movement.backfilled = true;
       if(line.unitPrice > 0){ movement.unitPrice = line.unitPrice; movement.lineTotal = line.unitPrice * line.qty; }
     } else {
       w.stock[from] -= line.qty;
@@ -2762,7 +2829,15 @@ function renderSettings(){
   document.getElementById('setBondedLocation').value = state.settings.bondedLocation || '';
   document.getElementById('setDefaultTransporter').value = state.settings.defaultTransporter || '';
   document.getElementById('setBondedEmail').value = state.settings.bondedEmail || '';
+  document.getElementById('aiFunctionUrl').value = state.settings.aiFunctionUrl || '';
+  document.getElementById('btnOpenAi').style.display = state.settings.aiFunctionUrl ? 'block' : 'none';
 }
+document.getElementById('btnSaveAiFunctionUrl').addEventListener('click', async ()=>{
+  state.settings.aiFunctionUrl = document.getElementById('aiFunctionUrl').value.trim();
+  await saveJSON(STATE_KEY, state, true);
+  renderSettings();
+  toast(state.settings.aiFunctionUrl ? 'AI Assistant connected' : 'AI Assistant URL cleared', 'success');
+});
 document.getElementById('btnSaveSettings').addEventListener('click', async ()=>{
   state.businessName = document.getElementById('setBizName').value.trim() || 'Brut Africa';
   state.settings.notifyEmail = document.getElementById('setNotifyEmail').value.trim();
@@ -3255,6 +3330,79 @@ function renderAll(){
   updateExportBanners();
 }
 document.getElementById('btnOpenHelp').addEventListener('click', ()=> document.getElementById('helpModalBackdrop').classList.add('open'));
+
+/* ---------- AI Assistant ---------- */
+function buildDataSummaryForAI(){
+  const wineLines = state.wines.filter(w=>!w.archived).map(w=>
+    `${w.name} (${w.producer||'—'}): Bonded ${w.stock.bonded}, Karen ${w.stock.karen}, Westlands ${w.stock.westlands}, default price KES ${w.price||0}`
+  ).join('\n');
+  const soldMovements = state.movements.filter(m=>m.type==='remove');
+  const totalRevenue = soldMovements.reduce((s,m)=>s+(m.lineTotal||0),0);
+  const custStats = computeCustomerStats();
+  const custLines = state.customers.map(c=>{
+    const s = custStats[c.name.toLowerCase()];
+    const qty = s ? s.movements.reduce((a,m)=>a+m.qty,0) : 0;
+    const rev = s ? s.movements.reduce((a,m)=>a+(m.lineTotal||0),0) : 0;
+    return `${c.name}: ${qty} bottles bought, KES ${rev} revenue`;
+  }).join('\n');
+  const consignBatches = getOutstandingConsignmentBatches();
+  const consignLines = consignBatches.map(b=>{
+    const dLeft = daysUntil(b.agreementEnd);
+    const status = dLeft===null ? 'no end date set' : dLeft<0 ? `OVERDUE by ${Math.abs(dLeft)} days` : `${dLeft} days left`;
+    return `${b.consignee}: ${b.outstandingQty} bottles outstanding (${status})`;
+  }).join('\n') || 'None currently outstanding';
+  const recentMoves = [...state.movements].sort((a,b)=>b.createdAt-a.createdAt).slice(0,25).map(m=>{
+    const w = wineById(m.wineId);
+    return `${m.date} — ${m.type} — ${w?w.name:'?'} — qty ${m.qty}`;
+  }).join('\n');
+  return `WINES & CURRENT STOCK:\n${wineLines}\n\nTOTAL SALES REVENUE (all time): KES ${totalRevenue}\n\nCUSTOMERS:\n${custLines || 'None yet'}\n\nOUTSTANDING CONSIGNMENTS:\n${consignLines}\n\nMOST RECENT 25 MOVEMENTS:\n${recentMoves || 'None yet'}`;
+}
+
+let aiChatHistory = [];
+function appendAiChatBubble(role, text){
+  const log = document.getElementById('aiChatLog');
+  const bubble = document.createElement('div');
+  bubble.style.cssText = role==='user'
+    ? 'align-self:flex-end;background:var(--wine);color:#fff;padding:8px 12px;border-radius:12px 12px 2px 12px;max-width:85%;font-size:13.5px;white-space:pre-wrap;'
+    : 'align-self:flex-start;background:var(--surface-2);padding:8px 12px;border-radius:12px 12px 12px 2px;max-width:85%;font-size:13.5px;white-space:pre-wrap;';
+  bubble.textContent = text;
+  log.appendChild(bubble);
+  log.scrollTop = log.scrollHeight;
+  return bubble;
+}
+async function sendAiChatMessage(){
+  const input = document.getElementById('aiChatInput');
+  const question = input.value.trim();
+  if(!question) return;
+  const url = state.settings.aiFunctionUrl;
+  if(!url){ toast('Set up the AI Assistant in Settings first', 'error'); return; }
+  input.value = '';
+  appendAiChatBubble('user', question);
+  const thinkingBubble = appendAiChatBubble('assistant', 'Thinking…');
+  aiChatHistory.push({role:'user', content: question});
+  try{
+    const systemPrompt = `You are a helpful assistant inside Brut Africa's Cellar Ledger, a wine inventory app. Answer questions ONLY using the data provided below — never guess or use outside knowledge about wine. Be concise: a sentence or two, or a short list. If the data doesn't cover the question, say so plainly rather than guessing.\n\n${buildDataSummaryForAI()}`;
+    const res = await fetch(url, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({system: systemPrompt, messages: aiChatHistory, max_tokens: 500})
+    });
+    const data = await res.json();
+    let answer = 'Sorry, I couldn\'t get an answer just now.';
+    if(data && data.content && data.content[0] && data.content[0].text) answer = data.content[0].text;
+    else if(data && data.error) answer = `Error from the AI function: ${typeof data.error==='string'?data.error:JSON.stringify(data.error)}`;
+    thinkingBubble.textContent = answer;
+    aiChatHistory.push({role:'assistant', content: answer});
+  }catch(e){
+    thinkingBubble.textContent = 'Could not reach the AI Assistant — check the Cloud Function URL in Settings, and that it deployed successfully.';
+    aiChatHistory.pop();
+  }
+}
+document.getElementById('btnOpenAi').addEventListener('click', ()=>{
+  document.getElementById('aiModalBackdrop').classList.add('open');
+  document.getElementById('aiChatInput').focus();
+});
+document.getElementById('btnAiChatSend').addEventListener('click', sendAiChatMessage);
+document.getElementById('aiChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); sendAiChatMessage(); } });
 
 /* ---------- Init ---------- */
 async function init(){
