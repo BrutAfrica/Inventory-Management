@@ -660,6 +660,10 @@
 
       <div id="tastingContactField" style="display:none;">
         <div class="field"><label>Customer / Company / Person</label><input id="tastingContact" placeholder="Who was this tasting for?"></div>
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--ink-soft);margin:4px 0 0;cursor:pointer;">
+          <input type="checkbox" id="tastingBackfillOnly" style="margin-top:2px;">
+          <span>This already happened and is already reflected in your current stock numbers — just record it for the customer's history, don't deduct stock again.</span>
+        </label>
       </div>
 
       <div id="receivedFields" style="display:none;">
@@ -2325,6 +2329,7 @@ function openMoveModal(){
   document.getElementById('consignEndDate').value = '';
   document.getElementById('consignReference').value = '';
   document.getElementById('consignBackfillOnly').checked = false;
+  document.getElementById('tastingBackfillOnly').checked = false;
   wireCustomerSelect('invCustomer', 'invCustomerNew', '');
   wireCustomerSelect('consignCustomer', 'consignCustomerNew', '');
   document.getElementById('moveTypePickerField').style.display = 'block';
@@ -2392,7 +2397,8 @@ async function saveMovementInner(){
   if(db) await reloadFromCloud();
 
   const isIncrease = type==='received';
-  const isBackfillConsignment = type==='consignment' && document.getElementById('consignBackfillOnly').checked;
+  const isBackfill = (type==='consignment' && document.getElementById('consignBackfillOnly').checked)
+    || (type==='tasting' && document.getElementById('tastingBackfillOnly').checked);
 
   // Gather and validate every line first (all-or-nothing)
   const lineEls = Array.from(document.querySelectorAll('.move-line'));
@@ -2404,7 +2410,7 @@ async function saveMovementInner(){
     const unit = el.querySelector('.line-unit').value;
     const qty = unit==='case' ? rawQty * CASE_SIZE : rawQty;
     if(!w){ toast('Choose a wine for every line', 'error'); return; }
-    if(!isIncrease && !isBackfillConsignment){
+    if(!isIncrease && !isBackfill){
       const checkLoc = from; // moveFrom field doubles as "location" for remove/tasting
       if(w.stock[checkLoc] < qty){
         toast(`Not enough stock of "${w.name}" at ${locLabel(checkLoc)} (have ${w.stock[checkLoc]}, need ${qty})`, 'error');
@@ -2415,7 +2421,7 @@ async function saveMovementInner(){
       unitPrice: (type==='remove'||type==='consignment') ? (parseFloat(el.querySelector('.line-price-input').value) || 0) : 0});
   }
   // Guard against the same wine appearing twice and jointly exceeding stock (not relevant for receiving or backfilled consignments)
-  if(!isIncrease && !isBackfillConsignment){
+  if(!isIncrease && !isBackfill){
     const combined = {};
     lines.forEach(l=>{ combined[l.wine.id] = (combined[l.wine.id]||0) + l.qty; });
     for(const wid in combined){
@@ -2471,7 +2477,7 @@ async function saveMovementInner(){
       if(receivedSupplier) movement.supplier = receivedSupplier;
       if(receivedReference) movement.reference = receivedReference;
     } else if(type==='consignment'){
-      if(!isBackfillConsignment) w.stock[from] -= line.qty;
+      if(!isBackfill) w.stock[from] -= line.qty;
       movement.location = from;
       movement.consignee = consignCustomer;
       movement.agreementEnd = consignEndDate;
@@ -2479,12 +2485,13 @@ async function saveMovementInner(){
       movement.resolvedQty = 0;
       movement.consignmentStatus = 'outstanding';
       movement.overdueNotified = false;
-      if(isBackfillConsignment) movement.backfilled = true;
+      if(isBackfill) movement.backfilled = true;
       if(line.unitPrice > 0){ movement.unitPrice = line.unitPrice; movement.lineTotal = line.unitPrice * line.qty; }
     } else {
-      w.stock[from] -= line.qty;
+      if(!isBackfill) w.stock[from] -= line.qty;
       movement.location = from;
       if(type==='tasting' && tastingContact) movement.contact = tastingContact;
+      if(type==='tasting' && isBackfill) movement.backfilled = true;
       if(type==='remove' && line.unitPrice > 0){ movement.unitPrice = line.unitPrice; movement.lineTotal = line.unitPrice * line.qty; }
       if(sharedInvoiceId){
         movement.invoiceId = sharedInvoiceId;
