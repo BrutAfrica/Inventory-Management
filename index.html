@@ -406,7 +406,7 @@
         <div class="panel-body">
           <div class="field" style="max-width:280px;margin-bottom:12px;"><label>Search</label><input id="customerSearch" placeholder="Customer name…"></div>
           <div class="table-scroll"><table>
-            <thead><tr><th>Customer</th><th>Bottles bought</th><th>Revenue</th><th>Last activity</th><th></th></tr></thead>
+            <thead><tr><th>Customer</th><th>Bottles</th><th>Revenue</th><th>Last activity</th><th></th></tr></thead>
             <tbody id="depletedCustomerBody"></tbody>
           </table></div>
         </div>
@@ -3207,7 +3207,6 @@ function computeCustomerStats(){
 }
 function renderDepleted(){
   const search = (document.getElementById('customerSearch')?.value || '').trim().toLowerCase();
-  const stats = computeCustomerStats();
   const body = document.getElementById('depletedCustomerBody');
   const customers = [...state.customers]
     .filter(c=>!search || c.name.toLowerCase().includes(search))
@@ -3218,10 +3217,10 @@ function renderDepleted(){
     return;
   }
   body.innerHTML = customers.map(c=>{
-    const s = stats[c.name.toLowerCase()];
-    const totalQty = s ? s.movements.reduce((sum,m)=>sum+m.qty,0) : 0;
-    const revenue = s ? s.movements.reduce((sum,m)=>sum+(m.lineTotal||0),0) : 0;
-    const lastDate = s ? s.movements.reduce((max,m)=> m.date>max?m.date:max, '') : '';
+    const activity = computeAllCustomerActivity(c.name);
+    const totalQty = activity.reduce((sum,m)=>sum+m.qty,0);
+    const revenue = activity.filter(m=>m.type==='remove').reduce((sum,m)=>sum+(m.lineTotal||0),0);
+    const lastDate = activity.reduce((max,m)=> m.date>max?m.date:max, '');
     return `<tr class="clickable-row" data-customer-id="${c.id}" style="cursor:pointer;">
       <td><div class="wine-name">${esc(c.name)}</div>${c.contact?`<div class="wine-sub">${esc(c.contact)}</div>`:''}</td>
       <td>${totalQty>0 ? totalQty+' bottles' : '—'}</td>
