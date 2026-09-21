@@ -3242,30 +3242,53 @@ function renderDepleted(){
 }
 document.getElementById('customerSearch').addEventListener('input', renderDepleted);
 
+function computeAllCustomerActivity(customerName){
+  const target = customerName.trim().toLowerCase();
+  return state.movements.filter(m=>{
+    if(m.type==='remove'){
+      const inv = m.invoiceId ? invoicesIndex.find(i=>i.id===m.invoiceId) : null;
+      const name = (inv && inv.customer) ? inv.customer.trim() : (m.consignee ? m.consignee.trim() : '');
+      return name.toLowerCase()===target;
+    }
+    if(m.type==='tasting') return (m.contact||'').trim().toLowerCase()===target;
+    if(m.type==='consignment') return (m.consignee||'').trim().toLowerCase()===target;
+    return false;
+  });
+}
 function openCustomerDetailModal(customerId){
   const c = state.customers.find(x=>x.id===customerId);
   if(!c) return;
-  const stats = computeCustomerStats();
-  const s = stats[c.name.toLowerCase()];
-  const movements = s ? s.movements : [];
+  const allActivity = computeAllCustomerActivity(c.name);
+  const salesOnly = allActivity.filter(m=>m.type==='remove');
   document.getElementById('customerModalTitle').textContent = c.name;
-  const totalQty = movements.reduce((sum,m)=>sum+m.qty,0);
-  const totalRevenue = movements.reduce((sum,m)=>sum+(m.lineTotal||0),0);
-  const subtitleParts = [`${totalQty} bottle${totalQty===1?'':'s'}`];
-  if(totalRevenue>0) subtitleParts.push(formatKES(totalRevenue));
+  const totalQty = allActivity.reduce((sum,m)=>sum+m.qty,0);
+  const totalRevenue = salesOnly.reduce((sum,m)=>sum+(m.lineTotal||0),0);
+  const tastingCount = allActivity.filter(m=>m.type==='tasting').length;
+  const consignCount = allActivity.filter(m=>m.type==='consignment').length;
+  const subtitleParts = [`${totalQty} bottle${totalQty===1?'':'s'} across ${allActivity.length} event${allActivity.length===1?'':'s'}`];
+  if(totalRevenue>0) subtitleParts.push(`${formatKES(totalRevenue)} in sales`);
+  if(tastingCount) subtitleParts.push(`${tastingCount} tasting${tastingCount===1?'':'s'}`);
+  if(consignCount) subtitleParts.push(`${consignCount} consignment${consignCount===1?'':'s'}`);
   if(c.contact) subtitleParts.push(c.contact);
   document.getElementById('customerModalSubtitle').textContent = subtitleParts.join(' · ');
   const body = document.getElementById('customerModalBody');
-  if(!movements.length){
-    body.innerHTML = `<div class="empty-state"><p>No sales logged for ${esc(c.name)} yet.</p></div>`;
+  if(!allActivity.length){
+    body.innerHTML = `<div class="empty-state"><p>No activity logged for ${esc(c.name)} yet.</p></div>`;
   } else {
-    const rows = [...movements].sort((a,b)=>b.createdAt-a.createdAt);
-    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Wine</th><th>Qty</th><th>Price</th><th>Total</th><th>Invoice</th></tr></thead><tbody>
+    const rows = [...allActivity].sort((a,b)=>b.createdAt-a.createdAt);
+    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Event</th><th>Wine</th><th>Qty</th><th>Price</th><th>Total</th><th>Ref</th></tr></thead><tbody>
       ${rows.map(m=>{
         const w = wineById(m.wineId);
-        const inv = m.invoiceId?invoicesIndex.find(i=>i.id===m.invoiceId):null;
-        const ref = inv ? `<span class="filelink" data-view-inv="${inv.id}">${esc(inv.number||'View invoice')}${inv.fileName?' 📎':''}</span>` : '—';
-        return `<tr><td>${fmtDate(m.date)}</td><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td><td>${m.unitPrice?formatKES(m.unitPrice):'—'}</td><td>${m.lineTotal?formatKES(m.lineTotal):'—'}</td><td>${ref}</td></tr>`;
+        let ref = '—';
+        if(m.type==='remove'){
+          const inv = m.invoiceId?invoicesIndex.find(i=>i.id===m.invoiceId):null;
+          ref = inv ? `<span class="filelink" data-view-inv="${inv.id}">${esc(inv.number||'View invoice')}${inv.fileName?' 📎':''}</span>` : '—';
+        } else if(m.type==='consignment'){
+          const dLeft = daysUntil(m.agreementEnd);
+          const outstanding = m.qty - (m.resolvedQty||0);
+          ref = outstanding>0 ? (dLeft!==null && dLeft<0 ? `<span style="color:var(--red);">overdue</span>` : `${outstanding} outstanding`) : 'resolved';
+        }
+        return `<tr><td>${fmtDate(m.date)}</td><td>${typeBadgeFor(m.type, m.isRelease)}</td><td>${w?esc(w.name):'—'}</td><td>${m.qty}</td><td>${m.unitPrice?formatKES(m.unitPrice):'—'}</td><td>${m.lineTotal?formatKES(m.lineTotal):'—'}</td><td>${ref}</td></tr>`;
       }).join('')}
     </tbody></table></div>`;
     body.querySelectorAll('[data-view-inv]').forEach(el=>el.addEventListener('click', ()=>viewInvoice(el.dataset.viewInv)));
