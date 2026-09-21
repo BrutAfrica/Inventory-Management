@@ -752,7 +752,7 @@
   <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:80vh;">
     <div class="modal-head"><h3>🤖 Ask about your cellar</h3><button class="modal-close" data-close="aiModalBackdrop">&times;</button></div>
     <div class="modal-body" id="aiChatLog" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:200px;">
-      <div style="font-size:12.5px;color:var(--ink-soft);">Ask things like "how much Iconoclaste is at Karen?", "who owes us the most?", or "what's overdue on consignment?" — answers are based on your current data.</div>
+      <div style="font-size:12.5px;color:var(--ink-soft);">Ask things like "how much Iconoclaste is at Karen?", "who owes us the most?", or "what's overdue on consignment?" — answers are based on your current data. You can also say "client X is taking 3 bottles of Iconoclaste for a tasting" or "add a wine called Y" — I'll show you exactly what I'm about to do before anything changes.</div>
     </div>
     <div class="modal-foot" style="border-top:1px solid var(--line-soft);gap:8px;">
       <input id="aiChatInput" placeholder="Ask a question…" style="flex:1;">
@@ -3370,6 +3370,165 @@ function appendAiChatBubble(role, text){
   log.scrollTop = log.scrollHeight;
   return bubble;
 }
+function locLabel2(key){ return key==='bonded'?'Bonded Warehousing':key==='karen'?'Karen Warehouse':key==='westlands'?'Westlands Office':key; }
+function resolveLocationKey(text, fallback){
+  const t = (text||'').toLowerCase();
+  if(t.includes('bond')) return 'bonded';
+  if(t.includes('karen')) return 'karen';
+  if(t.includes('west')) return 'westlands';
+  return fallback || null;
+}
+function findWineByName(name){
+  const t = (name||'').trim().toLowerCase();
+  if(!t) return null;
+  return state.wines.find(w=>!w.archived && w.name.toLowerCase()===t)
+    || state.wines.find(w=>!w.archived && w.name.toLowerCase().includes(t));
+}
+
+function appendAiActionCard(action){
+  const log = document.getElementById('aiChatLog');
+  const card = document.createElement('div');
+  card.style.cssText = 'align-self:flex-start;background:var(--surface-2);border:1px solid var(--wine);padding:10px 12px;border-radius:12px;max-width:90%;font-size:13px;';
+  let summary = '';
+  if(action.action==='add_wine'){
+    summary = `<strong>Add a new wine</strong><br>${esc(action.name||'—')}${action.producer?` · ${esc(action.producer)}`:''}${action.vintage?` · '${esc(action.vintage)}`:''}${action.price?` · KES ${action.price}/bottle`:''}${action.notes?`<br><span style="color:var(--ink-soft);">${esc(action.notes)}</span>`:''}`;
+  } else if(action.action==='edit_wine'){
+    const changeLines = Object.entries(action.changes||{}).map(([k,v])=>`${k}: ${esc(String(v))}`).join('<br>');
+    summary = `<strong>Update "${esc(action.wineName||'—')}"</strong><br>${changeLines || 'No changes given'}`;
+  } else if(['log_tasting','log_sale','log_transfer','log_received'].includes(action.action)){
+    const w = findWineByName(action.wineName);
+    const wineLabel = w ? esc(w.name) : `<span style="color:var(--red);">"${esc(action.wineName||'—')}" — not found in your wine list</span>`;
+    const qty = Number(action.qty)||0;
+    const date = action.date || todayStr();
+    if(action.action==='log_tasting'){
+      const loc = resolveLocationKey(action.location, 'westlands');
+      summary = `<strong>Log a tasting</strong><br>${wineLabel} — ${qty} bottle${qty===1?'':'s'}<br>For: ${esc(action.contact||'—')}<br>From: ${locLabel2(loc)} · ${date}`;
+    } else if(action.action==='log_sale'){
+      const loc = resolveLocationKey(action.location, 'westlands');
+      summary = `<strong>Log a sale</strong><br>${wineLabel} — ${qty} bottle${qty===1?'':'s'}<br>Customer: ${esc(action.customer||'—')}${action.price?`<br>Price: KES ${action.price}/bottle`:''}<br>From: ${locLabel2(loc)} · ${date}`;
+    } else if(action.action==='log_transfer'){
+      const from = resolveLocationKey(action.from, null), to = resolveLocationKey(action.to, null);
+      summary = `<strong>Log a transfer</strong><br>${wineLabel} — ${qty} bottle${qty===1?'':'s'}<br>${from?locLabel2(from):'<span style="color:var(--red);">from location unclear</span>'} → ${to?locLabel2(to):'<span style="color:var(--red);">to location unclear</span>'} · ${date}`;
+    } else {
+      const loc = resolveLocationKey(action.location, 'bonded');
+      summary = `<strong>Log stock received</strong><br>${wineLabel} — ${qty} bottle${qty===1?'':'s'}<br>Into: ${locLabel2(loc)}${action.supplier?`<br>Supplier: ${esc(action.supplier)}`:''} · ${date}`;
+    }
+  } else {
+    summary = `<strong>Unrecognized action</strong><br>${esc(JSON.stringify(action))}`;
+  }
+  card.innerHTML = `${summary}<div style="margin-top:8px;display:flex;gap:8px;">
+    <button class="btn small" data-ai-confirm="1">Confirm</button>
+    <button class="btn secondary small" data-ai-cancel="1">Cancel</button>
+  </div>`;
+  log.appendChild(card);
+  log.scrollTop = log.scrollHeight;
+  card.querySelector('[data-ai-confirm]').addEventListener('click', async ()=>{
+    card.querySelectorAll('button').forEach(b=>b.disabled=true);
+    const result = await applyAiWineAction(action);
+    card.innerHTML = result.ok ? `✓ ${esc(result.message)}` : `✕ ${esc(result.message)}`;
+  });
+  card.querySelector('[data-ai-cancel]').addEventListener('click', ()=>{
+    card.innerHTML = 'Cancelled — nothing changed.';
+  });
+}
+async function applyAiWineAction(action){
+  try{
+    if(db) await reloadFromCloud();
+    if(action.action==='add_wine'){
+      const name = (action.name||'').trim();
+      if(!name) return {ok:false, message:'No wine name given — nothing added.'};
+      if(state.wines.some(w=>w.name.toLowerCase()===name.toLowerCase())){
+        return {ok:false, message:`"${name}" already exists — use an edit instead, or pick a different name.`};
+      }
+      state.wines.push({
+        id: uid(), name,
+        producer: (action.producer||'').trim(), vintage: (action.vintage||'').trim(),
+        sku: (action.sku||'').trim(), notes: (action.notes||'').trim(),
+        price: Number(action.price)||0,
+        stock: {bonded:0, karen:0, westlands:0}
+      });
+      await saveJSON(STATE_KEY, state, true);
+      renderAll();
+      return {ok:true, message:`Added "${name}". Stock starts at 0 — log a "Receive stock" movement to bring it in.`};
+    }
+    if(action.action==='edit_wine'){
+      const target = (action.wineName||'').trim().toLowerCase();
+      const w = state.wines.find(x=>x.name.toLowerCase()===target);
+      if(!w) return {ok:false, message:`Couldn't find a wine named "${action.wineName}" — nothing changed.`};
+      const changes = action.changes || {};
+      const allowed = ['producer','vintage','sku','notes','price'];
+      let applied = [];
+      for(const key of allowed){
+        if(changes[key]!==undefined){
+          w[key] = key==='price' ? (Number(changes[key])||0) : String(changes[key]).trim();
+          applied.push(key);
+        }
+      }
+      if(!applied.length) return {ok:false, message:'No recognized fields to change — nothing done.'};
+      await saveJSON(STATE_KEY, state, true);
+      renderAll();
+      return {ok:true, message:`Updated ${applied.join(', ')} for "${w.name}".`};
+    }
+    if(['log_tasting','log_sale','log_transfer','log_received'].includes(action.action)){
+      const w = findWineByName(action.wineName);
+      if(!w) return {ok:false, message:`Couldn't find a wine matching "${action.wineName}" — nothing logged.`};
+      const qty = Math.max(1, Math.round(Number(action.qty)||0));
+      if(!qty) return {ok:false, message:'No valid quantity given — nothing logged.'};
+      const date = action.date || todayStr();
+      const movement = {id: uid(), batchId: uid(), wineId: w.id, type: null, qty, date, createdAt: Date.now(), emailStatus:'pending'};
+
+      if(action.action==='log_tasting'){
+        const loc = resolveLocationKey(action.location, 'westlands');
+        if(w.stock[loc] < qty) return {ok:false, message:`Not enough "${w.name}" at ${locLabel2(loc)} (have ${w.stock[loc]}, need ${qty}) — nothing logged.`};
+        movement.type = 'tasting'; movement.location = loc;
+        movement.contact = (action.contact||'').trim();
+        movement.note = movement.contact ? `Tasting for ${movement.contact} (via AI Assistant)` : 'Tasting (via AI Assistant)';
+        w.stock[loc] -= qty;
+      } else if(action.action==='log_sale'){
+        const loc = resolveLocationKey(action.location, 'westlands');
+        if(w.stock[loc] < qty) return {ok:false, message:`Not enough "${w.name}" at ${locLabel2(loc)} (have ${w.stock[loc]}, need ${qty}) — nothing logged.`};
+        movement.type = 'remove'; movement.location = loc;
+        const customerName = (action.customer||'').trim();
+        if(customerName) await ensureCustomerExists(customerName);
+        const price = Number(action.price)||0;
+        if(price>0){ movement.unitPrice = price; movement.lineTotal = price*qty; }
+        movement.note = `Sold to ${customerName||'—'} (via AI Assistant)`;
+        if(customerName){
+          const invId = uid();
+          invoicesIndex.push({id: invId, number:'', customer: customerName, date, fileName:'', movementIds:[movement.id]});
+          movement.invoiceId = invId;
+        }
+        w.stock[loc] -= qty;
+      } else if(action.action==='log_transfer'){
+        const from = resolveLocationKey(action.from, null), to = resolveLocationKey(action.to, null);
+        if(!from || !to) return {ok:false, message:'Could not tell which locations you meant — nothing logged.'};
+        if(from===to) return {ok:false, message:'From and To are the same location — nothing logged.'};
+        if(w.stock[from] < qty) return {ok:false, message:`Not enough "${w.name}" at ${locLabel2(from)} (have ${w.stock[from]}, need ${qty}) — nothing logged.`};
+        movement.type = 'move'; movement.from = from; movement.to = to;
+        movement.note = 'Transfer (via AI Assistant)';
+        w.stock[from] -= qty; w.stock[to] += qty;
+      } else {
+        const loc = resolveLocationKey(action.location, 'bonded');
+        movement.type = 'received'; movement.location = loc;
+        if(action.supplier) movement.supplier = (action.supplier||'').trim();
+        movement.note = 'Stock received (via AI Assistant)';
+        w.stock[loc] += qty;
+      }
+
+      state.movements.push(movement);
+      const result = await sendBatchAlertEmail([movement], movement.note);
+      movement.emailStatus = result.status;
+      if(movement.invoiceId) await saveJSON(INVOICE_INDEX_KEY, invoicesIndex, true);
+      await saveJSON(STATE_KEY, state, true);
+      renderAll();
+      const verb = action.action==='log_tasting'?'Logged tasting':action.action==='log_sale'?'Logged sale':action.action==='log_transfer'?'Logged transfer':'Logged stock received';
+      return {ok:true, message:`${verb}: ${qty} bottle${qty===1?'':'s'} of "${w.name}".`};
+    }
+    return {ok:false, message:'Unrecognized action type — nothing done.'};
+  }catch(e){
+    return {ok:false, message:'Something went wrong saving that — nothing was changed.'};
+  }
+}
 async function sendAiChatMessage(){
   const input = document.getElementById('aiChatInput');
   const question = input.value.trim();
@@ -3381,7 +3540,18 @@ async function sendAiChatMessage(){
   const thinkingBubble = appendAiChatBubble('assistant', 'Thinking…');
   aiChatHistory.push({role:'user', content: question});
   try{
-    const systemPrompt = `You are a helpful assistant inside Brut Africa's Cellar Ledger, a wine inventory app. Answer questions ONLY using the data provided below — never guess or use outside knowledge about wine. Be concise: a sentence or two, or a short list. If the data doesn't cover the question, say so plainly rather than guessing.\n\n${buildDataSummaryForAI()}`;
+    const systemPrompt = `You are a helpful assistant inside Brut Africa's Cellar Ledger, a wine inventory app. Answer questions ONLY using the data provided below — never guess or use outside knowledge about wine. Be concise: a sentence or two, or a short list. If the data doesn't cover the question, say so plainly rather than guessing.
+
+If — and only if — the user is clearly asking to ADD A NEW WINE, CHANGE AN EXISTING WINE's details, or LOG A MOVEMENT (a tasting, a sale, a transfer between locations, or stock received), respond with NOTHING except a single line starting with ACTION_JSON: followed by a JSON object, in one of these exact shapes:
+ACTION_JSON:{"action":"add_wine","name":"...","producer":"...","vintage":"...","price":0,"notes":"...","sku":""}
+ACTION_JSON:{"action":"edit_wine","wineName":"exact existing name to match","changes":{"price":0,"producer":"...","notes":"...","vintage":"...","sku":"..."}}
+ACTION_JSON:{"action":"log_tasting","wineName":"...","qty":0,"contact":"who it's for","location":"bonded/karen/westlands, best guess, default westlands","date":"YYYY-MM-DD, default today if not said"}
+ACTION_JSON:{"action":"log_sale","wineName":"...","qty":0,"customer":"...","price":0,"location":"bonded/karen/westlands, best guess, default westlands","date":"YYYY-MM-DD"}
+ACTION_JSON:{"action":"log_transfer","wineName":"...","qty":0,"from":"bonded/karen/westlands","to":"bonded/karen/westlands","date":"YYYY-MM-DD"}
+ACTION_JSON:{"action":"log_received","wineName":"...","qty":0,"location":"bonded/karen/westlands, default bonded","supplier":"...","date":"YYYY-MM-DD"}
+For wineName, use the wine's name as close as possible to how it appears in the data below. Only include fields the user actually specified or that are clearly implied — never invent a customer, contact, or price the user didn't mention. Never use ACTION_JSON for questions or anything you're not confident matches one of these five actions — respond normally in plain text instead.
+
+${buildDataSummaryForAI()}`;
     const res = await fetch(url, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({system: systemPrompt, messages: aiChatHistory, max_tokens: 500})
@@ -3390,8 +3560,21 @@ async function sendAiChatMessage(){
     let answer = 'Sorry, I couldn\'t get an answer just now.';
     if(data && data.content && data.content[0] && data.content[0].text) answer = data.content[0].text;
     else if(data && data.error) answer = `Error from the AI function: ${typeof data.error==='string'?data.error:JSON.stringify(data.error)}`;
-    thinkingBubble.textContent = answer;
-    aiChatHistory.push({role:'assistant', content: answer});
+
+    const actionMatch = answer.match(/ACTION_JSON:\s*(\{[\s\S]*\})/);
+    if(actionMatch){
+      try{
+        const action = JSON.parse(actionMatch[1]);
+        thinkingBubble.remove();
+        appendAiActionCard(action);
+        aiChatHistory.push({role:'assistant', content: answer});
+      }catch(e){
+        thinkingBubble.textContent = 'I tried to prepare a change but the response wasn\'t valid — nothing was affected. Try rephrasing.';
+      }
+    } else {
+      thinkingBubble.textContent = answer;
+      aiChatHistory.push({role:'assistant', content: answer});
+    }
   }catch(e){
     thinkingBubble.textContent = 'Could not reach the AI Assistant — check the Cloud Function URL in Settings, and that it deployed successfully.';
     aiChatHistory.pop();
